@@ -53,6 +53,20 @@
       margin: 0 auto 32px;
     }
 
+    .notice {
+      background: var(--pink-light);
+      border: 1px solid rgba(255, 51, 102, 0.2);
+      border-radius: 14px;
+      padding: 18px 22px;
+      font-size: 14px;
+      line-height: 1.65;
+      color: var(--black);
+      max-width: 700px;
+      margin: 0 auto 28px;
+      text-align: left;
+    }
+    .notice a { color: var(--pink); font-weight: 600; }
+
     /* Tabs */
     .tabs {
       display: flex;
@@ -382,6 +396,11 @@
   <section class="hero">
     <h1>Обменяйся <span>лагерем</span> с другим участником</h1>
     <p>Здесь ты можешь найти того, с кем получится обменяться лагерями.</p>
+    <div class="notice">
+      <strong>Этот сайт — неофициальный инструмент для поиска вариантов обмена. Сам обмен на сайте не происходит.</strong><br><br>
+      Если вы нашли участника, готового поменяться, напишите на <a href="mailto:socialproject@fondpotanin.ru">socialproject@fondpotanin.ru</a>. Укажите лагеря и участников обмена, поставьте второго участника в копию. Дождитесь ответа Фонда.<br><br>
+      Обмен возможен только <strong>до заключения договора с Фондом</strong>. После подписания договора обмен невозможен.
+    </div>
     <div class="tabs" id="tabs">
       <button class="tab active" data-tab="offers">Заявки на обмен</button>
       <button class="tab" data-tab="matches">Найденные мэтчи</button>
