@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Школа Фонда Потанина 2026 — Биржа обмена лагерями</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --pink: #FF3366;
+      --pink-dark: #FF00AA;
+      --pink-light: #FFF0F5;
+      --pink-gradient: linear-gradient(135deg, #FF3366, #FF00AA);
+      --black: #1A1A1A;
+      --gray: #6B7280;
+      --gray-light: #F3F4F6;
+      --gray-border: #E5E7EB;
+      --white: #FFFFFF;
+      --yellow: #F59E0B;
+      --red: #EF4444;
+      --red-light: #FEF2F2;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Manrope', sans-serif;
+      color: var(--black);
+      background: var(--white);
+      line-height: 1.6;
+    }
+
+    /* Hero */
+    .hero {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 60px 24px 40px;
+      text-align: center;
+    }
+    .hero h1 {
+      font-size: 42px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      margin-bottom: 16px;
+    }
+    .hero h1 span { background: var(--pink-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .hero p {
+      font-size: 18px;
+      color: var(--gray);
+      max-width: 640px;
+      margin: 0 auto 32px;
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 40px;
+      flex-wrap: wrap;
+    }
+    .tab {
+      padding: 10px 24px;
+      border-radius: 12px;
+      border: 2px solid var(--gray-border);
+      background: var(--white);
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      color: var(--black);
+    }
+    .tab:hover { border-color: var(--pink); color: var(--pink); }
+    .tab.active { background: var(--pink-gradient); color: var(--white); border-color: transparent; }
+
+    /* Container */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px 80px;
+    }
+    .section { display: none; }
+    .section.active { display: block; }
+
+    /* Cards */
+    .card {
+      background: var(--white);
+      border: 1px solid var(--gray-border);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 16px;
+      transition: box-shadow 0.2s, border-color 0.2s;
+    }
+    .card:hover { box-shadow: 0 4px 24px rgba(0,0,0,0.06); border-color: var(--pink-light); }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .card-title {
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .card-badge {
+      font-size: 13px;
+      font-weight: 600;
+      padding: 4px 12px;
+      border-radius: 20px;
+    }
+    .badge-green { background: var(--pink-gradient); color: var(--white); }
+    .badge-yellow { background: #FEF3C7; color: #92400E; }
+    .badge-red { background: var(--red-light); color: #991B1B; }
+    .card-meta {
+      font-size: 14px;
+      color: var(--gray);
+      margin-top: 8px;
+    }
+    .card-actions { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+
+    /* Match card */
+    .match-card {
+      background: linear-gradient(135deg, var(--pink-light), #FFF5FA);
+      border: 2px solid var(--pink);
+    }
+    .match-arrow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      font-size: 20px;
+      font-weight: 700;
+      padding: 16px 0;
+      flex-wrap: wrap;
+    }
+    .match-person {
+      text-align: center;
+      min-width: 140px;
+    }
+    .match-person .name { font-weight: 700; font-size: 16px; }
+    .match-person .camplabel { font-size: 13px; color: var(--gray); }
+    .match-swap-icon {
+      font-size: 28px;
+      color: var(--pink);
+    }
+
+    /* Form */
+    .form-group { margin-bottom: 20px; }
+    .form-label {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: var(--black);
+    }
+    .form-input, .form-select, .form-textarea {
+      width: 100%;
+      padding: 12px 16px;
+      border: 1px solid var(--gray-border);
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 15px;
+      transition: border-color 0.2s;
+      background: var(--white);
+    }
+    .form-input:focus, .form-select:focus, .form-textarea:focus {
+      outline: none;
+      border-color: var(--pink);
+      box-shadow: 0 0 0 3px var(--pink-light);
+    }
+    .form-textarea { resize: vertical; min-height: 80px; }
+
+    /* Buttons */
+    .btn {
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-primary { background: var(--pink-gradient); color: var(--white); }
+    .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(255, 51, 102, 0.35); }
+    .btn-secondary { background: var(--gray-light); color: var(--black); border: 1px solid var(--gray-border); }
+    .btn-secondary:hover { background: #E5E7EB; }
+    .btn-danger { background: var(--red); color: var(--white); }
+    .btn-danger:hover { background: #DC2626; }
+    .btn-sm { padding: 6px 14px; font-size: 13px; border-radius: 8px; }
+
+    /* Search */
+    .search-bar {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    .search-bar input {
+      flex: 1;
+      min-width: 200px;
+      padding: 12px 16px;
+      border: 1px solid var(--gray-border);
+      border-radius: 12px;
+      font-family: inherit;
+      font-size: 15px;
+    }
+    .search-bar input:focus { outline: none; border-color: var(--pink); }
+
+    /* Filters */
+    .filters {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .filter-chip {
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid var(--gray-border);
+      background: var(--white);
+      transition: all 0.2s;
+    }
+    .filter-chip:hover { border-color: var(--pink); }
+    .filter-chip.active { background: var(--pink-gradient); color: var(--white); border-color: transparent; }
+
+    /* Stats */
+    .stats {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 32px;
+      flex-wrap: wrap;
+    }
+    .stat {
+      background: var(--gray-light);
+      border-radius: 12px;
+      padding: 16px 24px;
+      text-align: center;
+      min-width: 120px;
+      flex: 1;
+    }
+    .stat-value { font-size: 28px; font-weight: 800; color: var(--pink); }
+    .stat-label { font-size: 13px; color: var(--gray); margin-top: 4px; }
+
+    /* Toast */
+    .toast-container {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .toast {
+      padding: 14px 20px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+      animation: slideIn 0.3s ease;
+      max-width: 400px;
+    }
+    .toast-success { background: var(--pink-gradient); color: white; }
+    .toast-error { background: var(--red); color: white; }
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+    /* Loading */
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--gray);
+      font-size: 16px;
+    }
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--gray-light);
+      border-top-color: var(--pink);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* How it works */
+    .how-it-works {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 16px;
+      margin-bottom: 48px;
+    }
+    .step-card {
+      background: var(--gray-light);
+      border-radius: 16px;
+      padding: 24px;
+      text-align: center;
+    }
+    .step-number {
+      width: 40px;
+      height: 40px;
+      background: var(--pink-gradient);
+      color: var(--white);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 18px;
+      margin: 0 auto 12px;
+    }
+    .step-card h3 { font-size: 16px; margin-bottom: 6px; }
+    .step-card p { font-size: 13px; color: var(--gray); }
+
+    /* Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(4px);
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--white);
+      border-radius: 20px;
+      padding: 32px;
+      max-width: 560px;
+      width: 90%;
+      max-height: 85vh;
+      overflow-y: auto;
+    }
+    .modal h2 { font-size: 24px; margin-bottom: 24px; }
+    .modal-close {
+      float: right;
+      background: none;
+      border: none;
+      font-size: 24px;
+      cursor: pointer;
+      padding: 4px;
+      line-height: 1;
+      color: var(--gray);
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      padding: 32px 24px;
+      border-top: 1px solid var(--gray-border);
+      color: var(--gray);
+      font-size: 13px;
+    }
+    .footer img { height: 28px; margin-bottom: 12px; }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .hero h1 { font-size: 30px; }
+      .hero p { font-size: 15px; }
+      .tabs { gap: 4px; }
+      .tab { padding: 8px 14px; font-size: 13px; }
+      .match-arrow { flex-direction: column; gap: 8px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Hero -->
+  <section class="hero">
+    <h1>Обменяйся <span>лагерем</span> с другим участником</h1>
+    <p>Здесь ты можешь найти того, с кем получится обменяться лагерями.</p>
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-tab="offers">Заявки на обмен</button>
+      <button class="tab" data-tab="matches">Найденные мэтчи</button>
+      <button class="tab" data-tab="create">Создать заявку</button>
+      <button class="tab" data-tab="participants">Участники</button>
+    </div>
+  </section>
+
+  <!-- Toast container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Modal -->
+  <div class="modal-overlay" id="modal">
+    <div class="modal" id="modalContent"></div>
+  </div>
+
+  <!-- Content -->
+  <div class="container">
+    <div class="how-it-works">
+      <div class="step-card">
+        <div class="step-number">1</div>
+        <h3>Найди себя</h3>
+        <p>На вкладке «Участники» найди свой лагерь по имени</p>
+      </div>
+      <div class="step-card">
+        <div class="step-number">2</div>
+        <h3>Создай заявку</h3>
+        <p>Укажи, на какой лагерь хочешь обменяться, и оставь контакт</p>
+      </div>
+      <div class="step-card">
+        <div class="step-number">3</div>
+        <h3>Жди мэтч</h3>
+        <p>Система сама найдёт встречные заявки и покажет совпадения</p>
+      </div>
+    </div>
+
+    <div id="loading" class="loading"><div class="spinner"></div>Загрузка данных...</div>
+
+    <!-- Section: Offers -->
+    <section class="section active" id="section-offers">
+      <div class="stats" id="stats"></div>
+      <div class="search-bar">
+        <input type="text" id="searchOffers" placeholder="Поиск по имени или лагерю..." oninput="renderOffers()">
+      </div>
+      <div id="offersList"></div>
+    </section>
+
+    <!-- Section: Matches -->
+    <section class="section" id="section-matches">
+      <div id="matchesList"></div>
+    </section>
+
+    <!-- Section: Create Offer -->
+    <section class="section" id="section-create">
+      <div class="card">
+        <h2 style="margin-bottom:24px">Создать заявку на обмен</h2>
+        <form id="offerForm" onsubmit="submitOffer(event)">
+          <div class="form-group">
+            <label class="form-label">ФИО</label>
+            <input type="text" class="form-input" id="formName" placeholder="Иванов Иван Иванович" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Мой лагерь (который мне назначили)</label>
+            <select class="form-select" id="formFromCamp" required>
+              <option value="">Выберите лагерь...</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Хочу в лагерь</label>
+            <select class="form-select" id="formToCamp" required>
+              <option value="">Выберите лагерь...</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Контакт для связи (Telegram / телефон)</label>
+            <input type="text" class="form-input" id="formContact" placeholder="@username или +7 900 000-00-00" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Примечание (необязательно)</label>
+            <textarea class="form-textarea" id="formNote" placeholder="Например: готов обсудить детали"></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary">Отправить заявку</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- Section: Participants -->
+    <section class="section" id="section-participants">
+      <div class="search-bar">
+        <input type="text" id="searchParticipants" placeholder="Поиск по ФИО или вузу..." oninput="renderParticipants()">
+      </div>
+      <div class="filters" id="monthFilters">
+        <span class="filter-chip active" data-month="all" onclick="filterByMonth('all')">Все</span>
+        <span class="filter-chip" data-month="июня" onclick="filterByMonth('июня')">Июнь</span>
+        <span class="filter-chip" data-month="июля" onclick="filterByMonth('июля')">Июль</span>
+        <span class="filter-chip" data-month="августа" onclick="filterByMonth('августа')">Август</span>
+        <span class="filter-chip" data-month="сентября" onclick="filterByMonth('сентября')">Сентябрь</span>
+      </div>
+      <div class="search-bar" style="margin-top:12px">
+        <select id="campFilterSelect" class="form-select" style="max-width:360px" onchange="renderParticipants()">
+          <option value="all">Выберите лагерь...</option>
+        </select>
+      </div>
+      <div id="participantsList"></div>
+    </section>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <img src="https://static.tildacdn.com/tild6432-3434-4037-a165-623433336364/logo.svg"
+         alt="Фонд Потанина" onerror="this.style.display='none'">
+    <p>Биржа обмена лагерями Школы Фонда Потанина 2026</p>
+    <p>Неофициальный сервис, созданный участниками для участников</p>
+  </footer>
+
+  <script>
+    // ========== CONFIG ==========
+    // Замени на URL своего развёрнутого Google Apps Script Web App
+    const API_URL = 'https://script.google.com/macros/s/AKfycbz......Заполни_URL.....Вашего-Web-App.....____Развернутого.....Скрипта/exec';
+
+    // ========== STATE ==========
+    let camps = [];
+    let participants = [];
+    let offers = [];
+    let matches = [];
+    let currentTab = 'offers';
+
+    // ========== INIT ==========
+    let isDemoMode = !API_URL.includes('script.google.com');
+
+    document.addEventListener('DOMContentLoaded', () => {
+      if (isDemoMode) {
+        showToast('Демо-режим — данные не сохраняются в Google Таблицу', 'success');
+      }
+      initTabs();
+      loadAllData();
+    });
+
+    function initTabs() {
+      document.getElementById('tabs').addEventListener('click', (e) => {
+        const tab = e.target.closest('.tab');
+        if (!tab) return;
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        currentTab = tab.dataset.tab;
+        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+        document.getElementById('section-' + currentTab).classList.add('active');
+        if (currentTab === 'matches') renderMatches();
+        if (currentTab === 'offers') renderOffers();
+        if (currentTab === 'participants') renderParticipants();
+        if (currentTab === 'create') populateCampSelects();
+      });
+    }
+
+    // ========== API CALLS ==========
+    async function fetchAPI(action) {
+      const resp = await fetch(API_URL + '?action=' + action);
+      return resp.json();
+    }
+
+    async function postAPI(data) {
+      const resp = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      return resp.json();
+    }
+
+    async function loadAllData() {
+      const isDemo = !API_URL.includes('script.google.com');
+
+      try {
+        if (!isDemo) {
+          const [c, p, o, m] = await Promise.all([
+            fetchAPI('camps'),
+            fetchAPI('participants'),
+            fetchAPI('offers'),
+            fetchAPI('matches')
+          ]);
+          camps = Array.isArray(c) ? c : [];
+          participants = Array.isArray(p) ? p : [];
+          offers = Array.isArray(o) ? o : [];
+          matches = Array.isArray(m) ? m : [];
+        } else {
+          loadDemoData();
+        }
+        document.getElementById('loading').style.display = 'none';
+        renderAll();
+      } catch (e) {
+        console.error('Ошибка загрузки данных:', e);
+        loadDemoData();
+        document.getElementById('loading').style.display = 'none';
+        renderAll();
+      }
+    }
+
+    function loadDemoData() {
+      if (typeof REAL_CAMPS !== 'undefined' && typeof REAL_PARTICIPANTS !== 'undefined') {
+        camps = REAL_CAMPS;
+        participants = REAL_PARTICIPANTS;
+      } else {
+        // Minimal fallback if data files are missing
+        camps = [
+          { name: 'Национальный парк «Сайлюгемский»', dates: '20-26 июня', region: 'Республика Алтай' },
+          { name: 'Забайкальский национальный парк', dates: '20-29 июня', region: 'Республика Бурятия' }
+        ];
+        participants = [
+          { name: 'Возиян Александра Ивановна', university: 'СПбПУ', city: 'Санкт-Петербург', region: 'Санкт-Петербург', camp: 'Национальный парк «Сайлюгемский»' }
+        ];
+      }
+      offers = [];
+      matches = [];
+    }
+
+    function renderAll() {
+      document.getElementById('loading').style.display = 'none';
+      renderOffers();
+      renderMatches();
+      renderParticipants();
+      populateCampSelects();
+      updateStats();
+    }
+
+    // ========== STATS ==========
+    function updateStats() {
+      const uniqueFrom = new Set(offers.map(o => o.fromCamp)).size;
+      const uniqueTo = new Set(offers.map(o => o.toCamp)).size;
+      document.getElementById('stats').innerHTML = `
+        <div class="stat"><div class="stat-value">${offers.length}</div><div class="stat-label">Заявок на обмен</div></div>
+        <div class="stat"><div class="stat-value">${matches.length}</div><div class="stat-label">Мэтчей найдено</div></div>
+        <div class="stat"><div class="stat-value">${participants.length}</div><div class="stat-label">Участников</div></div>
+        <div class="stat"><div class="stat-value">${camps.length}</div><div class="stat-label">Лагерей</div></div>
+      `;
+    }
+
+    // ========== OFFERS ==========
+    function renderOffers() {
+      const container = document.getElementById('offersList');
+      const search = (document.getElementById('searchOffers')?.value || '').toLowerCase();
+
+      const filtered = offers.filter(o =>
+        o.name.toLowerCase().includes(search) ||
+        o.fromCamp.toLowerCase().includes(search) ||
+        o.toCamp.toLowerCase().includes(search)
+      );
+
+      if (filtered.length === 0) {
+        container.innerHTML = '<div class="card" style="text-align:center;color:var(--gray)">Пока нет заявок. <a href="#" onclick="switchTab(\'create\')" style="color:var(--pink)">Создать первую?</a></div>';
+        return;
+      }
+
+      container.innerHTML = filtered.map((o, i) => `
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">${escapeHtml(o.name)}</div>
+              <div class="card-meta">
+                ${escapeHtml(o.fromCamp)} → <strong>${escapeHtml(o.toCamp)}</strong>
+              </div>
+            </div>
+          </div>
+          ${o.contact ? `<div class="card-meta">Контакт: ${escapeHtml(o.contact)}</div>` : ''}
+          ${o.note ? `<div class="card-meta">${escapeHtml(o.note)}</div>` : ''}
+          <div class="card-meta" style="font-size:12px;color:#9CA3AF">${escapeHtml(o.timestamp || '')}</div>
+        </div>
+      `).join('');
+    }
+
+    // ========== MATCHES ==========
+    function renderMatches() {
+      const container = document.getElementById('matchesList');
+
+      if (matches.length === 0) {
+        container.innerHTML = '<div class="card" style="text-align:center;color:var(--gray)">Мэтчей пока нет. Как только появятся встречные заявки — они отобразятся здесь.</div>';
+        return;
+      }
+
+      container.innerHTML = matches.map((m, i) => `
+        <div class="card match-card">
+          <div class="match-arrow">
+            <div class="match-person">
+              <div class="name">${escapeHtml(m.personA.name)}</div>
+              <div class="camplabel">${escapeHtml(m.personA.from)}</div>
+              ${m.personA.contact ? `<div class="camplabel">${escapeHtml(m.personA.contact)}</div>` : ''}
+            </div>
+            <div class="match-swap-icon">⇄</div>
+            <div class="match-person">
+              <div class="name">${escapeHtml(m.personB.name)}</div>
+              <div class="camplabel">${escapeHtml(m.personB.from)}</div>
+              ${m.personB.contact ? `<div class="camplabel">${escapeHtml(m.personB.contact)}</div>` : ''}
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // ========== PARTICIPANTS ==========
+    function renderParticipants() {
+      const container = document.getElementById('participantsList');
+      const search = (document.getElementById('searchParticipants')?.value || '').toLowerCase();
+      const activeMonth = document.querySelector('#monthFilters .filter-chip.active')?.dataset?.month || 'all';
+      const activeCamp = document.getElementById('campFilterSelect')?.value || 'all';
+
+      let filtered = participants;
+      if (search) {
+        filtered = filtered.filter(p =>
+          p.name.toLowerCase().includes(search) ||
+          (p.university || '').toLowerCase().includes(search) ||
+          (p.camp || '').toLowerCase().includes(search)
+        );
+      }
+
+      // Filter by month
+      if (activeMonth !== 'all') {
+        filtered = filtered.filter(p => {
+          const camp = camps.find(c => c.name === p.camp);
+          return camp?.dates?.includes(activeMonth);
+        });
+      }
+
+      // Filter by specific camp
+      if (activeCamp !== 'all') {
+        filtered = filtered.filter(p => p.camp === activeCamp);
+      }
+
+      // Populate camp dropdown grouped by month
+      const select = document.getElementById('campFilterSelect');
+      const monthOrder = { 'июня': 1, 'июля': 2, 'августа': 3, 'сентября': 4 };
+      const monthNames = { 'июня': 'Июнь', 'июля': 'Июль', 'августа': 'Август', 'сентября': 'Сентябрь', 'без даты': 'Без даты' };
+
+      // Filter camps by selected month for dropdown
+      let campsForDropdown = camps;
+      if (activeMonth !== 'all') {
+        campsForDropdown = camps.filter(c => c.dates?.includes(activeMonth));
+      }
+
+      const grouped = {};
+      campsForDropdown.forEach(c => {
+        let hasMonth = false;
+        for (const month of Object.keys(monthOrder)) {
+          if (c.dates?.includes(month)) {
+            hasMonth = true;
+            if (!grouped[month]) grouped[month] = [];
+            grouped[month].push(c.name);
+          }
+        }
+        if (!hasMonth) {
+          if (!grouped['без даты']) grouped['без даты'] = [];
+          grouped['без даты'].push(c.name);
+        }
+      });
+
+      const sortedMonths = Object.keys(grouped).sort((a, b) => (monthOrder[a] || 99) - (monthOrder[b] || 99));
+
+      const prevValue = select.value;
+      select.innerHTML = '<option value="all">Выберите лагерь...</option>';
+      sortedMonths.forEach(month => {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = monthNames[month] || month;
+        grouped[month].sort().forEach(campName => {
+          const opt = document.createElement('option');
+          opt.value = campName;
+          opt.textContent = campName;
+          optgroup.appendChild(opt);
+        });
+        select.appendChild(optgroup);
+      });
+      if ([...select.options].some(o => o.value === prevValue)) {
+        select.value = prevValue;
+      }
+
+      if (filtered.length === 0) {
+        container.innerHTML = '<div class="card" style="text-align:center;color:var(--gray)">Участники не найдены</div>';
+        return;
+      }
+
+      container.innerHTML = `<p style="margin-bottom:12px;color:var(--gray);font-size:14px">Найдено: ${filtered.length}</p>` +
+        filtered.map(p => `
+        <div class="card">
+          <div class="card-title" style="font-size:16px">${escapeHtml(p.name)}</div>
+          <div class="card-meta">${escapeHtml(p.university || '')}</div>
+          <div class="card-meta">${escapeHtml(p.city || '')}, ${escapeHtml(p.region || '')}</div>
+          <span class="card-badge badge-green" style="margin-top:8px;display:inline-block">${escapeHtml(p.camp || '—')}</span>
+        </div>
+      `).join('');
+    }
+
+    function filterByMonth(month) {
+      document.querySelectorAll('#monthFilters .filter-chip').forEach(c => c.classList.remove('active'));
+      const chip = document.querySelector(`#monthFilters .filter-chip[data-month="${month}"]`);
+      if (chip) chip.classList.add('active');
+      document.getElementById('campFilterSelect').value = 'all';
+      renderParticipants();
+    }
+
+    function filterByCamp(camp) {
+      document.getElementById('campFilterSelect').value = camp;
+      renderParticipants();
+    }
+
+    // ========== CREATE OFFER ==========
+    function populateCampSelects() {
+      const fromSelect = document.getElementById('formFromCamp');
+      const toSelect = document.getElementById('formToCamp');
+
+      fromSelect.innerHTML = '<option value="">Выберите лагерь...</option>' +
+        camps.map(c => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)}</option>`).join('');
+
+      toSelect.innerHTML = fromSelect.innerHTML;
+    }
+
+    async function submitOffer(event) {
+      event.preventDefault();
+
+      const name = document.getElementById('formName').value.trim();
+      const fromCamp = document.getElementById('formFromCamp').value;
+      const toCamp = document.getElementById('formToCamp').value;
+      const contact = document.getElementById('formContact').value.trim();
+      const note = document.getElementById('formNote').value.trim();
+
+      if (fromCamp === toCamp) {
+        showToast('Выберите разные лагеря для обмена', 'error');
+        return;
+      }
+
+      if (!API_URL.includes('script.google.com')) {
+        // Demo mode — simulate success
+        showToast('Демо-режим: заявка создана локально. После настройки API данные будут сохраняться в Google Таблицу.', 'success');
+        offers.push({ name, fromCamp, toCamp, contact, note, timestamp: new Date().toLocaleString('ru-RU') });
+        document.getElementById('offerForm').reset();
+        renderOffers();
+        updateStats();
+        return;
+      }
+
+      try {
+        const result = await postAPI({
+          action: 'createOffer',
+          participantId: name.replace(/\s+/g, '_').toLowerCase(),
+          name: name,
+          fromCamp: fromCamp,
+          toCamp: toCamp,
+          contact: contact,
+          note: note
+        });
+
+        if (result.success) {
+          showToast('Заявка создана! Обновите страницу, чтобы увидеть изменения.', 'success');
+          document.getElementById('offerForm').reset();
+          // Reload data
+          const [o, m] = await Promise.all([fetchAPI('offers'), fetchAPI('matches')]);
+          offers = Array.isArray(o) ? o : [];
+          matches = Array.isArray(m) ? m : [];
+          renderOffers();
+          renderMatches();
+          updateStats();
+        } else {
+          showToast('Ошибка: ' + (result.error || 'Неизвестная ошибка'), 'error');
+        }
+      } catch (e) {
+        showToast('Ошибка сети: ' + e.message, 'error');
+      }
+    }
+
+    // ========== HELPERS ==========
+    function switchTab(tabName) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      const tab = document.querySelector(`.tab[data-tab="${tabName}"]`);
+      if (tab) tab.classList.add('active');
+      currentTab = tabName;
+      document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+      document.getElementById('section-' + tabName).classList.add('active');
+      if (tabName === 'offers') renderOffers();
+      if (tabName === 'matches') renderMatches();
+      if (tabName === 'participants') renderParticipants();
+      if (tabName === 'create') populateCampSelects();
+    }
+
+    function showToast(message, type) {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = 'toast toast-' + type;
+      toast.textContent = message;
+      container.appendChild(toast);
+      setTimeout(() => toast.remove(), 4000);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+  </script>
+<script src="camps-data.js"></script>
+  <script src="participants-data.js"></script>
+</body>
+</html>
