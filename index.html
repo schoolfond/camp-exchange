@@ -651,8 +651,6 @@
         return;
       }
 
-      // Load offers and matches from API (with timeout, page still works if API fails)
-
       // Load offers and matches from API
       try {
         const [o, m] = await Promise.all([
@@ -668,7 +666,7 @@
       }
 
       document.getElementById('loading').style.display = 'none';
-      renderAll();
+      try { renderAll(); } catch(e) { console.error('render error:', e); }
     }
 
     function loadDemoData() {
