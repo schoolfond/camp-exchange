@@ -64,26 +64,28 @@ function handlePost(e) {
     if (action === "registerLeader") {
       const name = params.name;
       const camp = params.camp;
+      const campDates = params.campDates || "";
       const contact = params.contact || "";
       const passwordHash = params.passwordHash;
-      if (!name || !camp || !passwordHash) return jsonResponse({ error: "Missing fields" }, 400);
-      if (!isCamp_(camp)) return jsonResponse({ error: "Такого лагеря нет в списке" }, 400);
-      if (findLeaderByCamp_(camp)) return jsonResponse({ error: "Этот лагерь уже занят кэмп-лидером" }, 409);
+      if (!name || !camp || !campDates || !passwordHash) return jsonResponse({ error: "Missing fields" }, 400);
+      if (!isCampSession_(camp, campDates)) return jsonResponse({ error: "Такой сессии лагеря нет в списке" }, 400);
+      if (findLeaderBySession_(camp, campDates)) return jsonResponse({ error: "Эта сессия уже занята кэмп-лидером" }, 409);
       const sheet = getLeadersSheet_();
       const timestamp = new Date().toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
-      sheet.appendRow([camp, name, passwordHash, contact, timestamp]);
+      sheet.appendRow([camp, campDates, name, passwordHash, contact, timestamp]);
       return jsonResponse({ success: true });
     }
 
     if (action === "loginLeader") {
       const camp = params.camp;
+      const campDates = params.campDates || "";
       const passwordHash = params.passwordHash;
       if (!camp || !passwordHash) return jsonResponse({ error: "Missing fields" }, 400);
-      const leader = findLeaderByCamp_(camp);
+      const leader = findLeaderBySession_(camp, campDates);
       if (!leader || leader.passwordHash !== passwordHash) {
         return jsonResponse({ error: "Неверный пароль" }, 401);
       }
-      return jsonResponse({ success: true, name: leader.name, camp: leader.camp });
+      return jsonResponse({ success: true, name: leader.name, camp: leader.camp, campDates: leader.campDates });
     }
 
     if (action === "setConfirmed" || action === "unsetConfirmed") {
@@ -91,6 +93,7 @@ function handlePost(e) {
       const role = params.role;
       const passwordHash = params.passwordHash;
       const camp = params.camp || "";
+      const campDates = params.campDates || "";
       if (!targetName || !role || !passwordHash) {
         return jsonResponse({ error: "Missing fields" }, 400);
       }
@@ -99,13 +102,15 @@ function handlePost(e) {
           return jsonResponse({ error: "Не авторизован" }, 401);
         }
       } else if (role === "leader") {
-        if (!camp) return jsonResponse({ error: "Missing camp" }, 400);
-        if (!verifyLeaderAuth_(camp, passwordHash)) {
+        if (!camp || !campDates) return jsonResponse({ error: "Missing camp/campDates" }, 400);
+        if (!verifyLeaderAuth_(camp, campDates, passwordHash)) {
           return jsonResponse({ error: "Не авторизован" }, 401);
         }
-        const targetCamp = getParticipantCamp_(targetName);
-        if (!targetCamp) return jsonResponse({ error: "Участника нет в списке" }, 404);
-        if (targetCamp !== camp) return jsonResponse({ error: "Участник не из вашего лагеря" }, 403);
+        const target = getParticipantSession_(targetName);
+        if (!target) return jsonResponse({ error: "Участника нет в списке" }, 404);
+        if (target.camp !== camp || target.campDates !== campDates) {
+          return jsonResponse({ error: "Участник не из вашей сессии лагеря" }, 403);
+        }
       } else {
         return jsonResponse({ error: "Unknown role" }, 400);
       }
@@ -129,22 +134,27 @@ function handlePost(e) {
     if (action === "createOffer") {
       const name = params.name;
       const passwordHash = params.passwordHash;
-      const fromCamp = params.fromCamp || "";
       const toCamp = params.toCamp || "";
+      const toCampDates = params.toCampDates || "";
       const contact = params.contact || "";
       const note = params.note || "";
 
-      if (!name || !fromCamp) {
-        return jsonResponse({ error: "Missing required fields (name, fromCamp)" }, 400);
-      }
+      if (!name) return jsonResponse({ error: "Missing name" }, 400);
       if (!verifyAuth_(name, passwordHash)) return jsonResponse({ error: "Не авторизован" }, 401);
+
+      // Author's camp + dates are the authoritative truth — taken from the participants sheet.
+      const session = getParticipantSession_(name);
+      if (!session) return jsonResponse({ error: "Участника нет в списке" }, 403);
+      const fromCamp = session.camp;
+      const fromCampDates = session.campDates;
 
       const sheet = getSheetByName_("offers");
       if (!sheet) return jsonResponse({ error: "Sheet 'offers' not found" }, 500);
 
       const timestamp = new Date().toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
       const pId = name.replace(/\s+/g, "_").toLowerCase();
-      sheet.appendRow([timestamp, pId, name, fromCamp, toCamp, contact, note, "active"]);
+      // offers schema: timestamp | participantId | name | fromCamp | toCamp | contact | note | status | fromCampDates | toCampDates
+      sheet.appendRow([timestamp, pId, name, fromCamp, toCamp, contact, note, "active", fromCampDates, toCampDates]);
       return jsonResponse({ success: true, message: "Заявка создана!" });
     }
 
@@ -248,11 +258,24 @@ function isParticipant_(name) {
   const sheet = getSheetByName_("participants");
   if (!sheet) return false;
   const data = sheet.getDataRange().getValues();
-  // participants schema: id | name | university | region | city | camp
+  // participants schema: id | name | university | region | city | camp | campDates
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][1]) === name) return true;
   }
   return false;
+}
+
+function getParticipantSession_(name) {
+  // Returns { camp, campDates } or null
+  const sheet = getSheetByName_("participants");
+  if (!sheet) return null;
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][1]) === name) {
+      return { camp: String(data[i][5] || ""), campDates: String(data[i][6] || "") };
+    }
+  }
+  return null;
 }
 
 function verifyAuth_(name, passwordHash) {
@@ -267,22 +290,23 @@ function getLeadersSheet_() {
   let sheet = ss.getSheetByName("leaders");
   if (!sheet) {
     sheet = ss.insertSheet("leaders");
-    sheet.appendRow(["camp", "name", "passwordHash", "contact", "createdAt"]);
+    sheet.appendRow(["camp", "campDates", "name", "passwordHash", "contact", "createdAt"]);
   }
   return sheet;
 }
 
-function findLeaderByCamp_(camp) {
+function findLeaderBySession_(camp, campDates) {
   const sheet = getLeadersSheet_();
   const data = sheet.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === camp) {
+    if (String(data[i][0]) === camp && String(data[i][1]) === campDates) {
       return {
         row: i + 1,
         camp: String(data[i][0]),
-        name: String(data[i][1] || ""),
-        passwordHash: String(data[i][2] || ""),
-        contact: String(data[i][3] || "")
+        campDates: String(data[i][1]),
+        name: String(data[i][2] || ""),
+        passwordHash: String(data[i][3] || ""),
+        contact: String(data[i][4] || "")
       };
     }
   }
@@ -296,37 +320,29 @@ function getLeadersList_() {
   if (data.length < 2) return [];
   return data.slice(1).map(row => ({
     camp: String(row[0] || ""),
-    name: String(row[1] || ""),
-    contact: String(row[3] || "")
+    campDates: String(row[1] || ""),
+    name: String(row[2] || ""),
+    contact: String(row[4] || "")
   }));
 }
 
-function isCamp_(camp) {
+function isCampSession_(camp, campDates) {
+  // True if the (camp, dates) pair exists in the camps sheet.
   const sheet = getSheetByName_("camps");
   if (!sheet) return false;
   const data = sheet.getDataRange().getValues();
+  // schema: name | dates | region
   for (let i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === camp) return true;
+    if (String(data[i][0]) === camp && String(data[i][1]) === campDates) return true;
   }
   return false;
 }
 
-function verifyLeaderAuth_(camp, passwordHash) {
+function verifyLeaderAuth_(camp, campDates, passwordHash) {
   if (!camp || !passwordHash) return false;
-  const leader = findLeaderByCamp_(camp);
+  const leader = findLeaderBySession_(camp, campDates || "");
   if (!leader) return false;
   return leader.passwordHash === passwordHash;
-}
-
-function getParticipantCamp_(name) {
-  const sheet = getSheetByName_("participants");
-  if (!sheet) return null;
-  const data = sheet.getDataRange().getValues();
-  // schema: id | name | university | region | city | camp
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][1]) === name) return String(data[i][5] || "");
-  }
-  return null;
 }
 
 function getConfirmedSheet_() {
@@ -412,15 +428,16 @@ function findMatches(filterName) {
   const likesAll = getSheet("likes");
   const matches = [];
 
-  // 1. Classic matches: A wants X→Y, B wants Y→X
+  // 1. Classic matches: A wants X→Y (specific sessions), B wants Y→X (specific sessions)
   for (let i = 0; i < offers.length; i++) {
     for (let j = i + 1; j < offers.length; j++) {
       const a = offers[i], b = offers[j];
-      if (a.fromCamp === b.toCamp && a.toCamp === b.fromCamp) {
+      if (a.fromCamp === b.toCamp && (a.fromCampDates || "") === (b.toCampDates || "")
+       && a.toCamp === b.fromCamp && (a.toCampDates || "") === (b.fromCampDates || "")) {
         matches.push({
           type: "exchange",
-          personA: { name: a.name, from: a.fromCamp, to: a.toCamp, contact: a.contact },
-          personB: { name: b.name, from: b.fromCamp, to: b.toCamp, contact: b.contact }
+          personA: { name: a.name, from: a.fromCamp, fromDates: a.fromCampDates, to: a.toCamp, toDates: a.toCampDates, contact: a.contact },
+          personB: { name: b.name, from: b.fromCamp, fromDates: b.fromCampDates, to: b.toCamp, toDates: b.toCampDates, contact: b.contact }
         });
       }
     }
@@ -437,12 +454,27 @@ function findMatches(filterName) {
         l.likerName === filterName && l.offerName === like.likerName
       );
       if (likedByMe) {
+        const myOffer = offers.find(o => o.name === filterName);
         const theirOffer = offers.find(o => o.name === like.likerName);
         if (!theirOffer) continue; // their offer was removed/confirmed-out
         matches.push({
           type: "like",
-          personA: { name: filterName, from: theirOffer.fromCamp, to: theirOffer.toCamp, contact: "" },
-          personB: { name: like.likerName, from: like.offerFrom, to: like.offerTo, contact: "" }
+          personA: {
+            name: filterName,
+            from: myOffer?.fromCamp || "",
+            fromDates: myOffer?.fromCampDates || "",
+            to: myOffer?.toCamp || "",
+            toDates: myOffer?.toCampDates || "",
+            contact: myOffer?.contact || ""
+          },
+          personB: {
+            name: like.likerName,
+            from: theirOffer.fromCamp,
+            fromDates: theirOffer.fromCampDates || "",
+            to: theirOffer.toCamp,
+            toDates: theirOffer.toCampDates || "",
+            contact: theirOffer.contact || ""
+          }
         });
       }
     }

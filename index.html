@@ -910,7 +910,7 @@
             <div>
               <div class="card-title">${escapeHtml(o.name)}${confirmedSet.has(o.name) ? ' <span class="card-badge badge-confirmed" style="font-size:11px;vertical-align:middle">✓ Точно еду</span>' : ''}</div>
               <div class="card-meta">
-                ${escapeHtml(campLabel(o.fromCamp))}${o.toCamp ? ` → <strong>${escapeHtml(campLabel(o.toCamp))}</strong>` : ' → <em style="color:var(--gray)">не указан</em>'}
+                ${escapeHtml(campLabel(o.fromCamp, o.fromCampDates))}${o.toCamp ? ` → <strong>${escapeHtml(campLabel(o.toCamp, o.toCampDates))}</strong>` : ' → <em style="color:var(--gray)">не указан</em>'}
               </div>
             </div>
             ${canDelete ? `<button class="btn btn-sm btn-danger btn-icon" onclick="deleteOffer(${o._row}, '${escapeHtml(o.name).replace(/'/g, "\\'")}')" title="Удалить заявку"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M5.333 4V2.667a1.333 1.333 0 011.334-1.334h2.666a1.333 1.333 0 011.334 1.334V4m2 0v9.333a1.333 1.333 0 01-1.334 1.334H4.667a1.333 1.333 0 01-1.334-1.334V4h9.334z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}
@@ -962,13 +962,13 @@
           <div class="match-arrow">
             <div class="match-person">
               <div class="name">${escapeHtml(m.personA.name)}</div>
-              <div class="camplabel">${escapeHtml(campLabel(m.personA.from))}</div>
+              <div class="camplabel">${escapeHtml(campLabel(m.personA.from, m.personA.fromDates))}</div>
               ${m.personA.contact ? `<div class="camplabel">${escapeHtml(m.personA.contact)}</div>` : ''}
             </div>
             <div class="match-swap-icon">⇄</div>
             <div class="match-person">
               <div class="name">${escapeHtml(m.personB.name)}</div>
-              <div class="camplabel">${escapeHtml(campLabel(m.personB.from))}</div>
+              <div class="camplabel">${escapeHtml(campLabel(m.personB.from, m.personB.fromDates))}</div>
               ${m.personB.contact ? `<div class="camplabel">${escapeHtml(m.personB.contact)}</div>` : ''}
             </div>
           </div>
@@ -977,13 +977,14 @@
     }
 
     // ========== PARTICIPANTS ==========
-    let participantsCampFilter = '';
+    // { camp, campDates } — null/empty means no filter
+    let participantsCampFilter = null;
 
     function renderParticipants() {
       const container = document.getElementById('participantsList');
       const search = (document.getElementById('searchParticipants')?.value || '').toLowerCase();
       const activeMonth = document.querySelector('#monthFilters .filter-chip.active')?.dataset?.month || 'all';
-      const activeCamp = participantsCampFilter || 'all';
+      const activeFilter = participantsCampFilter;
 
       let filtered = participants;
       if (search) {
@@ -994,17 +995,16 @@
         );
       }
 
-      // Filter by month
+      // Filter by month — match the participant's own session dates, not the camp's first session
       if (activeMonth !== 'all') {
-        filtered = filtered.filter(p => {
-          const camp = camps.find(c => c.name === p.camp);
-          return camp?.dates?.includes(activeMonth);
-        });
+        filtered = filtered.filter(p => (p.campDates || '').includes(activeMonth));
       }
 
-      // Filter by specific camp
-      if (activeCamp !== 'all') {
-        filtered = filtered.filter(p => p.camp === activeCamp);
+      // Filter by specific session (camp + dates)
+      if (activeFilter) {
+        filtered = filtered.filter(p =>
+          p.camp === activeFilter.camp && (p.campDates || '') === (activeFilter.campDates || '')
+        );
       }
 
       if (filtered.length === 0) {
@@ -1018,7 +1018,7 @@
           const isConfirmed = confirmedSet.has(p.name);
           const canToggleConfirmed = currentUser && (
             (currentUser.role === 'volunteer' && currentUser.name === p.name) ||
-            (currentUser.role === 'leader' && currentUser.camp === p.camp)
+            (currentUser.role === 'leader' && currentUser.camp === p.camp && (currentUser.campDates || '') === (p.campDates || ''))
           );
           const nameEsc = escapeHtml(p.name).replace(/'/g, "\\'");
           return `
@@ -1026,9 +1026,9 @@
           <div class="card-title" style="font-size:16px">${escapeHtml(p.name)}</div>
           <div class="card-meta">${escapeHtml(p.university || '')}</div>
           <div class="card-meta">${escapeHtml(p.city || '')}, ${escapeHtml(p.region || '')}</div>
-          <span class="card-badge badge-green" style="margin-top:8px;display:inline-block">${escapeHtml(campLabel(p.camp) || '—')}</span>
+          <span class="card-badge badge-green" style="margin-top:8px;display:inline-block">${escapeHtml(campLabel(p.camp, p.campDates) || '—')}</span>
           ${offer
-            ? `<span class="card-badge badge-yellow" style="margin-top:8px;display:inline-block;margin-left:6px">Хочет в: ${escapeHtml(campLabel(offer.toCamp))}</span>`
+            ? `<span class="card-badge badge-yellow" style="margin-top:8px;display:inline-block;margin-left:6px">Хочет в: ${escapeHtml(campLabel(offer.toCamp, offer.toCampDates))}</span>`
             : `<span class="card-badge" style="margin-top:8px;display:inline-block;margin-left:6px;background:var(--gray-light);color:var(--gray);font-weight:500">Не ищет обмен</span>`
           }
           ${isConfirmed ? `<span class="card-badge badge-confirmed" style="margin-top:8px;display:inline-block;margin-left:6px">✓ Точно еду</span>` : ''}
@@ -1044,8 +1044,8 @@
       clearCampFilter();
     }
 
-    function filterByCamp(camp) {
-      participantsCampFilter = camp;
+    function filterByCamp(camp, campDates) {
+      participantsCampFilter = { camp, campDates: campDates || '' };
       const input = document.getElementById('campFilterInput');
       if (input) input.value = camp;
       const clearBtn = document.getElementById('campFilterClear');
@@ -1054,7 +1054,7 @@
     }
 
     function clearCampFilter() {
-      participantsCampFilter = '';
+      participantsCampFilter = null;
       const input = document.getElementById('campFilterInput');
       if (input) {
         input.value = '';
@@ -1081,8 +1081,8 @@
       }
       if (currentUser.role === 'leader') {
         const p = participants.find(x => x.name === name);
-        if (!p || p.camp !== currentUser.camp) {
-          showToast('Этот участник не из вашего лагеря', 'error');
+        if (!p || p.camp !== currentUser.camp || (p.campDates || '') !== (currentUser.campDates || '')) {
+          showToast('Этот участник не из вашей сессии лагеря', 'error');
           return;
         }
       }
@@ -1106,7 +1106,10 @@
           role: currentUser.role,
           passwordHash: currentUser.passwordHash
         };
-        if (currentUser.role === 'leader') params.camp = currentUser.camp;
+        if (currentUser.role === 'leader') {
+          params.camp = currentUser.camp;
+          params.campDates = currentUser.campDates || '';
+        }
         const result = await postAPI(params);
         if (!result.success) {
           // Revert
@@ -1213,13 +1216,17 @@
           }
         );
 
-        // "Want" camp autocomplete - filter camps
+        // "Want" camp autocomplete - each session is a distinct entry
         setupAutocomplete('formToCamp', 'toCampDropdown',
           () => camps,
           c => c.name,
           c => c.dates + ', ' + c.region,
-          null
+          c => { selectedToCampSession = { camp: c.name, campDates: c.dates || '' }; }
         );
+        // Erasing the input clears the picked session
+        document.getElementById('formToCamp').addEventListener('input', e => {
+          if (!e.target.value) selectedToCampSession = null;
+        });
 
         // Auth modal — login pane: combined ФИО autocomplete (volunteers + leaders)
         setupAutocomplete('authName', 'authNameDropdown',
@@ -1228,34 +1235,40 @@
               kind: 'volunteer',
               name: p.name,
               university: p.university,
-              camp: p.camp
+              camp: p.camp,
+              campDates: p.campDates
             }));
             const led = (leaders || []).map(l => ({
               kind: 'leader',
               name: l.name,
-              camp: l.camp
+              camp: l.camp,
+              campDates: l.campDates
             }));
             return [...vol, ...led];
           },
           item => item.name,
           item => item.kind === 'leader'
-            ? 'Кэмп-лидер · ' + item.camp
+            ? 'Кэмп-лидер · ' + item.camp + (item.campDates ? ' · ' + item.campDates : '')
             : 'Волонтёр' + (item.university ? ' · ' + item.university : (item.camp ? ' · ' + item.camp : '')),
           item => onAuthAccountSelected(item)
         );
 
-        // Auth modal — leader pane: camp autocomplete (camps without existing leader)
+        // Auth modal — leader pane: SESSION autocomplete (camp + dates, not yet taken)
         setupAutocomplete('leaderCamp', 'leaderCampDropdown',
           () => {
-            const taken = new Set((leaders || []).map(l => l.camp));
-            return (camps || []).filter(c => !taken.has(c.name));
+            const taken = new Set((leaders || []).map(l => l.camp + '||' + (l.campDates || '')));
+            return (camps || []).filter(c => !taken.has(c.name + '||' + (c.dates || '')));
           },
           c => c.name,
           c => c.dates ? c.dates + (c.region ? ' · ' + c.region : '') : (c.region || ''),
-          null
+          c => { leaderRegisterSession = { camp: c.name, campDates: c.dates || '' }; }
         );
+        // Clear leader-register session if user erases the input
+        document.getElementById('leaderCamp').addEventListener('input', e => {
+          if (!e.target.value) leaderRegisterSession = null;
+        });
 
-        // Participants tab: camp filter autocomplete (respects active month chip)
+        // Participants tab: SESSION filter autocomplete — each session is a distinct entry
         setupAutocomplete('campFilterInput', 'campFilterDropdown',
           () => {
             const activeMonth = document.querySelector('#monthFilters .filter-chip.active')?.dataset?.month || 'all';
@@ -1264,7 +1277,7 @@
           c => c.name,
           c => c.dates ? c.dates + (c.region ? ', ' + c.region : '') : (c.region || ''),
           c => {
-            participantsCampFilter = c.name;
+            participantsCampFilter = { camp: c.name, campDates: c.dates || '' };
             document.getElementById('campFilterClear').style.display = '';
             renderParticipants();
           }
@@ -1272,7 +1285,7 @@
         // Erasing input clears the filter
         document.getElementById('campFilterInput').addEventListener('input', e => {
           if (!e.target.value) {
-            participantsCampFilter = '';
+            participantsCampFilter = null;
             document.getElementById('campFilterClear').style.display = 'none';
             renderParticipants();
           }
@@ -1334,7 +1347,7 @@
       const formName = document.getElementById('formName');
       if (currentUser) {
         const roleLabel = currentUser.role === 'leader'
-          ? 'кэмп-лидер · ' + (currentUser.camp || '')
+          ? 'кэмп-лидер · ' + (currentUser.camp || '') + (currentUser.campDates ? ' · ' + currentUser.campDates : '')
           : 'волонтёр';
         const tooltip = currentUser.name + (currentUser.role === 'leader' ? ' — ' + roleLabel : '');
         status.innerHTML = `
@@ -1346,7 +1359,7 @@
             formName.value = currentUser.name;
             formName.readOnly = true;
             const p = (participants || []).find(p => p.name === currentUser.name);
-            if (p) document.getElementById('formFromCamp').value = p.camp;
+            if (p) document.getElementById('formFromCamp').value = campLabel(p.camp, p.campDates);
           } else {
             // Leaders don't create offers; clear & lock form
             formName.value = '';
@@ -1374,9 +1387,13 @@
       openLoginModal();
     }
 
-    // authSelectedAccount = { kind: 'volunteer' | 'leader', name, camp? }
+    // authSelectedAccount = { kind: 'volunteer' | 'leader', name, camp?, campDates? }
     let authSelectedAccount = null;
     let authState = 'idle'; // idle | login | register | loginLeader
+    // Session picked in leader-register form: { camp, campDates }
+    let leaderRegisterSession = null;
+    // Session picked in 'Хочу в лагерь' autocomplete: { camp, campDates }
+    let selectedToCampSession = null;
 
     function switchAuthTab(tab) {
       document.querySelectorAll('.auth-tab').forEach(t => t.classList.toggle('active', t.dataset.authtab === tab));
@@ -1499,8 +1516,8 @@
       try {
         if (isDemoMode) {
           const user = authSelectedAccount.kind === 'leader'
-            ? { role: 'leader', name: authSelectedAccount.name, camp: authSelectedAccount.camp, passwordHash: 'demo' }
-            : { role: 'volunteer', name: authSelectedAccount.name, passwordHash: 'demo' };
+            ? { role: 'leader', name: authSelectedAccount.name, camp: authSelectedAccount.camp, campDates: authSelectedAccount.campDates || '', passwordHash: 'demo' }
+            : { role: 'volunteer', name: authSelectedAccount.name, camp: authSelectedAccount.camp || '', campDates: authSelectedAccount.campDates || '', passwordHash: 'demo' };
           saveCurrentUser(user);
           closeAuthModal();
           showToast('Демо-режим: вход выполнен', 'success');
@@ -1513,16 +1530,18 @@
           result = await postAPI({
             action: 'loginLeader',
             camp: authSelectedAccount.camp,
+            campDates: authSelectedAccount.campDates || '',
             passwordHash
           });
-          user = { role: 'leader', name: authSelectedAccount.name, camp: authSelectedAccount.camp, passwordHash };
+          user = { role: 'leader', name: authSelectedAccount.name, camp: authSelectedAccount.camp, campDates: authSelectedAccount.campDates || '', passwordHash };
         } else {
+          // volunteer flow
           result = await postAPI({
             action: authState === 'login' ? 'login' : 'register',
             name: authSelectedAccount.name,
             passwordHash
           });
-          user = { role: 'volunteer', name: authSelectedAccount.name, passwordHash };
+          user = { role: 'volunteer', name: authSelectedAccount.name, camp: authSelectedAccount.camp || '', campDates: authSelectedAccount.campDates || '', passwordHash };
         }
         if (!result.success) {
           err.textContent = result.error || 'Ошибка';
@@ -1545,12 +1564,12 @@
 
     async function submitLeaderRegister() {
       const name = document.getElementById('leaderName').value.trim();
-      const camp = document.getElementById('leaderCamp').value.trim();
+      const campInput = document.getElementById('leaderCamp').value.trim();
       const contact = document.getElementById('leaderContact').value.trim();
       const password = document.getElementById('leaderPassword').value;
       const err = document.getElementById('leaderError');
 
-      if (!name || !camp || !contact || !password) {
+      if (!name || !campInput || !contact || !password) {
         err.textContent = 'Заполните все поля';
         err.style.display = 'block';
         return;
@@ -1560,19 +1579,21 @@
         err.style.display = 'block';
         return;
       }
-      // Validate camp is in the camps list
-      if (!camps.some(c => c.name === camp)) {
-        err.textContent = 'Выберите лагерь из подсказок';
+      // Need a specific session picked from the dropdown (one camp may have several sessions)
+      if (!leaderRegisterSession || leaderRegisterSession.camp !== campInput) {
+        err.textContent = 'Выберите конкретную сессию лагеря из подсказок';
         err.style.display = 'block';
         return;
       }
+      const camp = leaderRegisterSession.camp;
+      const campDates = leaderRegisterSession.campDates;
       err.style.display = 'none';
       const submit = document.getElementById('leaderSubmit');
       submit.disabled = true;
 
       try {
         if (isDemoMode) {
-          saveCurrentUser({ role: 'leader', name, camp, passwordHash: 'demo' });
+          saveCurrentUser({ role: 'leader', name, camp, campDates, passwordHash: 'demo' });
           closeAuthModal();
           showToast('Демо-режим: регистрация выполнена', 'success');
           runPendingAuthAction();
@@ -1581,7 +1602,7 @@
         const passwordHash = await sha256(password);
         const result = await postAPI({
           action: 'registerLeader',
-          name, camp, contact, passwordHash
+          name, camp, campDates, contact, passwordHash
         });
         if (!result.success) {
           err.textContent = result.error || 'Ошибка';
@@ -1589,9 +1610,9 @@
           submit.disabled = false;
           return;
         }
-        saveCurrentUser({ role: 'leader', name, camp, passwordHash });
+        saveCurrentUser({ role: 'leader', name, camp, campDates, passwordHash });
         // Add to local leaders list so it shows in login autocomplete
-        leaders.push({ camp, name, contact });
+        leaders.push({ camp, campDates, name, contact });
         closeAuthModal();
         showToast('Зарегистрированы как кэмп-лидер!', 'success');
         runPendingAuthAction();
@@ -1640,15 +1661,25 @@
         return;
       }
 
-      if (toCamp && fromCamp === toCamp) {
-        showToast('Выберите разные лагеря для обмена', 'error');
-        return;
+      // If a target camp is entered, require an explicit session pick (one camp may run multiple times)
+      let toCampDates = '';
+      if (toCamp) {
+        if (!selectedToCampSession || selectedToCampSession.camp !== toCamp) {
+          showToast('Выберите конкретную сессию целевого лагеря из подсказок', 'error');
+          return;
+        }
+        toCampDates = selectedToCampSession.campDates;
+        if (fromCamp === toCamp && (currentUser.campDates || '') === toCampDates) {
+          showToast('Выберите другую сессию для обмена', 'error');
+          return;
+        }
       }
 
       if (isDemoMode) {
         showToast('Демо-режим: заявка создана локально.', 'success');
-        offers.push({ name, fromCamp, toCamp, contact, note, timestamp: new Date().toLocaleString('ru-RU') });
+        offers.push({ name, fromCamp, fromCampDates: currentUser.campDates || '', toCamp, toCampDates, contact, note, timestamp: new Date().toLocaleString('ru-RU') });
         document.getElementById('offerForm').reset();
+        selectedToCampSession = null;
         updateAuthUI();
         renderOffers();
         updateStats();
@@ -1662,6 +1693,7 @@
           passwordHash: currentUser.passwordHash,
           fromCamp: fromCamp,
           toCamp: toCamp,
+          toCampDates: toCampDates,
           contact: contact,
           note: note
         });
@@ -1669,8 +1701,9 @@
         if (result.success) {
           showToast('Заявка создана!', 'success');
           document.getElementById('offerForm').reset();
+          selectedToCampSession = null;
           updateAuthUI(); // re-prefill name from currentUser
-          const [o, m] = await Promise.all([fetchAPI('offers'), fetchAPI('matches')]);
+          const [o, m] = await Promise.all([fetchAPI('offers'), fetchAPI(matchesQuery())]);
           offers = Array.isArray(o) ? o : [];
           matches = Array.isArray(m) ? m : [];
           renderOffers();
@@ -1813,23 +1846,22 @@
             || (l.contact || '').toLowerCase().includes(search);
       });
 
-      // Sort by camp start date, then camp name
+      // Sort by session start date (use the leader's own dates, not the camp's first session)
       const monthOrder = { 'июня': 6, 'июля': 7, 'августа': 8, 'сентября': 9 };
-      const sortKey = campName => {
-        const camp = (camps || []).find(c => c.name === campName);
-        if (!camp?.dates) return [99, 99];
-        const dayMatch = camp.dates.match(/^(\d+)/);
+      const sortKey = dates => {
+        if (!dates) return [99, 99];
+        const dayMatch = dates.match(/^(\d+)/);
         const day = dayMatch ? parseInt(dayMatch[1]) : 99;
-        for (const m in monthOrder) if (camp.dates.includes(m)) return [monthOrder[m], day];
+        for (const m in monthOrder) if (dates.includes(m)) return [monthOrder[m], day];
         return [99, day];
       };
       list.sort((a, b) => {
-        const ka = sortKey(a.camp), kb = sortKey(b.camp);
+        const ka = sortKey(a.campDates || ''), kb = sortKey(b.campDates || '');
         return (ka[0] - kb[0]) || (ka[1] - kb[1]) || a.camp.localeCompare(b.camp, 'ru');
       });
 
       const total = (camps || []).length;
-      const stats = `<p style="color:var(--gray);font-size:14px;margin-bottom:16px">Зарегистрированы кэмп-лидеры: <strong>${(leaders || []).length}</strong> из ${total} лагерей</p>`;
+      const stats = `<p style="color:var(--gray);font-size:14px;margin-bottom:16px">Зарегистрированы кэмп-лидеры: <strong>${(leaders || []).length}</strong> из ${total} сессий лагерей</p>`;
 
       if (list.length === 0) {
         container.innerHTML = stats + '<div class="card" style="text-align:center;color:var(--gray)">' +
@@ -1840,8 +1872,8 @@
       }
 
       container.innerHTML = stats + list.map(l => {
-        const camp = (camps || []).find(c => c.name === l.camp);
-        const dates = camp?.dates || '';
+        const camp = (camps || []).find(c => c.name === l.camp && c.dates === l.campDates);
+        const dates = l.campDates || camp?.dates || '';
         const region = camp?.region || '';
         return `
           <div class="card">
@@ -1929,12 +1961,12 @@
               <div class="match-arrow">
                 <div class="match-person">
                   <div class="name">${escapeHtml(m.personA.name)}</div>
-                  <div class="camplabel">${escapeHtml(campLabel(m.personA.from))}</div>
+                  <div class="camplabel">${escapeHtml(campLabel(m.personA.from, m.personA.fromDates))}</div>
                 </div>
                 <div class="match-swap-icon">⇄</div>
                 <div class="match-person">
                   <div class="name">${escapeHtml(m.personB.name)}</div>
-                  <div class="camplabel">${escapeHtml(campLabel(m.personB.from))}</div>
+                  <div class="camplabel">${escapeHtml(campLabel(m.personB.from, m.personB.fromDates))}</div>
                 </div>
               </div>
             </div>
@@ -1993,8 +2025,10 @@
       return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
-    function campLabel(name) {
-      const camp = camps.find(c => c.name === name);
+    function campLabel(name, dates) {
+      if (!name) return '';
+      if (dates) return `${name} (${dates})`;
+      const camp = (camps || []).find(c => c.name === name);
       if (camp && camp.dates) return `${name} (${camp.dates})`;
       return name;
     }
