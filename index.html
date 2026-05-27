@@ -613,31 +613,45 @@
     }
 
     // ========== API CALLS ==========
-    async function fetchAPI(action) {
-      const resp = await fetch(API_URL + '?action=' + action);
-      return resp.json();
+    async function fetchAPI(action, timeoutMs = 8000) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const resp = await fetch(API_URL + '?action=' + action, { signal: controller.signal });
+        return resp.json();
+      } finally {
+        clearTimeout(timeout);
+      }
     }
 
-    async function postAPI(data) {
-      const resp = await fetch(API_URL, {
-        method: 'POST',
-        body: new URLSearchParams(data)
-      });
-      return resp.json();
+    async function postAPI(data, timeoutMs = 8000) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const resp = await fetch(API_URL, {
+          method: 'POST',
+          body: new URLSearchParams(data),
+          signal: controller.signal
+        });
+        return resp.json();
+      } finally {
+        clearTimeout(timeout);
+      }
     }
 
     async function loadAllData() {
       const isDemo = !API_URL.includes('script.google.com');
 
+      // Load camps/participants from bundled data files (faster, offline-safe)
+      loadDemoData();
+
       if (isDemo) {
-        loadDemoData();
         document.getElementById('loading').style.display = 'none';
         renderAll();
         return;
       }
 
-      // Load camps/participants from bundled data files (faster, offline-safe)
-      loadDemoData();
+      // Load offers and matches from API (with timeout, page still works if API fails)
 
       // Load offers and matches from API
       try {
