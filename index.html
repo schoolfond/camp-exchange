@@ -226,6 +226,7 @@
     .btn-danger { background: var(--red); color: var(--white); }
     .btn-danger:hover { background: #DC2626; }
     .btn-sm { padding: 6px 14px; font-size: 13px; border-radius: 8px; }
+    .btn-icon { padding: 6px 8px; line-height: 0; }
 
     /* Search */
     .search-bar {
@@ -697,7 +698,7 @@
                 ${escapeHtml(o.fromCamp)} → <strong>${escapeHtml(o.toCamp)}</strong>
               </div>
             </div>
-            ${o._row ? `<button class="btn btn-sm btn-danger" onclick="deleteOffer(${o._row}, '${escapeHtml(o.name).replace(/'/g, "\\'")}')" title="Удалить заявку">×</button>` : ''}
+            ${o._row ? `<button class="btn btn-sm btn-danger btn-icon" onclick="deleteOffer(${o._row}, '${escapeHtml(o.name).replace(/'/g, "\\'")}')" title="Удалить заявку"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M5.333 4V2.667a1.333 1.333 0 011.334-1.334h2.666a1.333 1.333 0 011.334 1.334V4m2 0v9.333a1.333 1.333 0 01-1.334 1.334H4.667a1.333 1.333 0 01-1.334-1.334V4h9.334z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}
           </div>
           ${o.contact ? `<div class="card-meta">Контакт: ${escapeHtml(o.contact)}</div>` : ''}
           ${o.note ? `<div class="card-meta">${escapeHtml(o.note)}</div>` : ''}
