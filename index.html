@@ -572,29 +572,32 @@
     async function loadAllData() {
       const isDemo = !API_URL.includes('script.google.com');
 
-      try {
-        if (!isDemo) {
-          const [c, p, o, m] = await Promise.all([
-            fetchAPI('camps'),
-            fetchAPI('participants'),
-            fetchAPI('offers'),
-            fetchAPI('matches')
-          ]);
-          camps = Array.isArray(c) ? c : [];
-          participants = Array.isArray(p) ? p : [];
-          offers = Array.isArray(o) ? o : [];
-          matches = Array.isArray(m) ? m : [];
-        } else {
-          loadDemoData();
-        }
-        document.getElementById('loading').style.display = 'none';
-        renderAll();
-      } catch (e) {
-        console.error('Ошибка загрузки данных:', e);
+      if (isDemo) {
         loadDemoData();
         document.getElementById('loading').style.display = 'none';
         renderAll();
+        return;
       }
+
+      // Load camps/participants from bundled data files (faster, offline-safe)
+      loadDemoData();
+
+      // Load offers and matches from API
+      try {
+        const [o, m] = await Promise.all([
+          fetchAPI('offers'),
+          fetchAPI('matches')
+        ]);
+        offers = Array.isArray(o) ? o : [];
+        matches = Array.isArray(m) ? m : [];
+      } catch (e) {
+        console.error('Ошибка загрузки offers/matches:', e);
+        offers = [];
+        matches = [];
+      }
+
+      document.getElementById('loading').style.display = 'none';
+      renderAll();
     }
 
     function loadDemoData() {
