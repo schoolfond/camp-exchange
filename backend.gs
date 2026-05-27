@@ -38,19 +38,7 @@ function handleGet(e) {
 
 function handlePost(e) {
   try {
-    // Пытаемся получить данные из POST body (JSON) или из form params
-    let params = {};
-    if (e?.postData?.contents) {
-      try {
-        params = JSON.parse(e.postData.contents);
-      } catch (_) {
-        // Если не JSON, пробуем разобрать как form data
-        params = e.parameter || {};
-      }
-    } else {
-      params = e.parameter || {};
-    }
-
+    const params = e?.parameter || {};
     const action = params.action;
 
     if (action === "createOffer") {
