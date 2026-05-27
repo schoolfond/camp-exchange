@@ -423,6 +423,7 @@
       <button class="tab" data-tab="matches">Найденные мэтчи</button>
       <button class="tab" data-tab="create">Создать заявку</button>
       <button class="tab" data-tab="participants">Участники</button>
+      <button class="tab" data-tab="likes">Лайки</button>
     </div>
   </section>
 
@@ -475,6 +476,11 @@
       <div class="stats" id="stats"></div>
       <div class="search-bar">
         <input type="text" id="searchOffers" placeholder="Поиск по имени или лагерю..." oninput="renderOffers()">
+      </div>
+      <div class="filters" style="margin-bottom:16px">
+        <span class="filter-chip active" data-offerfilter="all" onclick="filterOffers('all')">Все</span>
+        <span class="filter-chip" data-offerfilter="withTarget" onclick="filterOffers('withTarget')">С указанием лагеря</span>
+        <span class="filter-chip" data-offerfilter="noTarget" onclick="filterOffers('noTarget')">Без указания лагеря</span>
       </div>
       <div id="offersList"></div>
     </section>
@@ -542,6 +548,19 @@
       </div>
       <div id="participantsList"></div>
     </section>
+
+    <!-- Section: Likes -->
+    <section class="section" id="section-likes">
+      <p style="color:var(--gray);margin-bottom:16px">Введите своё ФИО, чтобы увидеть, кто лайкнул вашу заявку</p>
+      <div class="search-bar">
+        <div class="autocomplete-wrap" style="flex:1;min-width:280px">
+          <input type="text" class="form-input" id="likesNameSearch" placeholder="Начните вводить ФИО..." autocomplete="off">
+          <div class="autocomplete-drop" id="likesNameDropdown"></div>
+        </div>
+        <button class="btn btn-primary" onclick="loadMyLikes()">Показать</button>
+      </div>
+      <div id="likesList"></div>
+    </section>
   </div>
 
   <!-- Footer -->
@@ -562,6 +581,8 @@
     let participants = [];
     let offers = [];
     let matches = [];
+    let likes = [];
+    let myLikeRows = null; // set of offer rows liked by the person searched in "likes" tab
     let currentTab = 'offers';
 
     // ========== INIT ==========
@@ -587,6 +608,7 @@
         if (currentTab === 'matches') renderMatches();
         if (currentTab === 'offers') renderOffers();
         if (currentTab === 'participants') renderParticipants();
+        if (currentTab === 'likes') setupLikesTab();
       });
     }
 
@@ -677,32 +699,54 @@
     function renderOffers() {
       const container = document.getElementById('offersList');
       const search = (document.getElementById('searchOffers')?.value || '').toLowerCase();
+      const offerFilter = document.querySelector('#section-offers .filter-chip.active')?.dataset?.offerfilter || 'all';
 
-      const filtered = offers.filter(o =>
+      let filtered = offers.filter(o =>
         o.name.toLowerCase().includes(search) ||
         o.fromCamp.toLowerCase().includes(search) ||
         o.toCamp.toLowerCase().includes(search)
       );
+
+      if (offerFilter === 'withTarget') filtered = filtered.filter(o => o.toCamp);
+      if (offerFilter === 'noTarget') filtered = filtered.filter(o => !o.toCamp);
 
       if (filtered.length === 0) {
         container.innerHTML = '<div class="card" style="text-align:center;color:var(--gray)">Пока нет заявок. <a href="#" onclick="switchTab(\'create\')" style="color:var(--pink)">Создать первую?</a></div>';
         return;
       }
 
-      container.innerHTML = filtered.map((o, i) => `
+      container.innerHTML = filtered.map((o, i) => {
+        const isLiked = myLikeRows ? myLikeRows.has(o._row) : false;
+        return `
         <div class="card">
           <div class="card-header">
             <div>
               <div class="card-title">${escapeHtml(o.name)}</div>
               <div class="card-meta">
-                ${escapeHtml(campLabel(o.fromCamp))} → <strong>${escapeHtml(campLabel(o.toCamp))}</strong>
+                ${escapeHtml(campLabel(o.fromCamp))}${o.toCamp ? ` → <strong>${escapeHtml(campLabel(o.toCamp))}</strong>` : ' → <em style="color:var(--gray)">не указан</em>'}
               </div>
             </div>
             ${o._row ? `<button class="btn btn-sm btn-danger btn-icon" onclick="deleteOffer(${o._row}, '${escapeHtml(o.name).replace(/'/g, "\\'")}')" title="Удалить заявку"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M5.333 4V2.667a1.333 1.333 0 011.334-1.334h2.666a1.333 1.333 0 011.334 1.334V4m2 0v9.333a1.333 1.333 0 01-1.334 1.334H4.667a1.333 1.333 0 01-1.334-1.334V4h9.334z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}
           </div>
+          <div class="card-actions">
+            <button class="btn btn-sm ${isLiked ? 'btn-danger' : 'btn-secondary'}" onclick="toggleLikeOffer(${o._row}, '${escapeHtml(o.name).replace(/'/g, "\\'")}', '${escapeHtml(o.fromCamp).replace(/'/g, "\\'")}', '${escapeHtml(o.toCamp).replace(/'/g, "\\'")}')" id="like-btn-${o._row}">
+              <span id="like-icon-${o._row}">${isLiked ? '💔' : '❤️'}</span>
+              <span id="like-text-${o._row}">${isLiked ? 'Убрать' : 'Нравится'}</span>
+            </button>
+          </div>
           ${o.contact ? `<div class="card-meta">Контакт: ${escapeHtml(o.contact)}</div>` : ''}
           ${o.note ? `<div class="card-meta">${escapeHtml(o.note)}</div>` : ''}
           <div class="card-meta" style="font-size:12px;color:#9CA3AF">${escapeHtml(o.timestamp || '')}</div>
+        </div>
+      `}).join('');
+    }
+
+    function filterOffers(filter) {
+      document.querySelectorAll('#section-offers .filter-chip').forEach(c => c.classList.remove('active'));
+      const chip = document.querySelector(`#section-offers .filter-chip[data-offerfilter="${filter}"]`);
+      if (chip) chip.classList.add('active');
+      renderOffers();
+    }
         </div>
       `).join('');
     }
@@ -1049,6 +1093,134 @@
       }
     }
 
+    // ========== LIKE / UNLIKE ==========
+    let myLikedRows = new Set();
+    let myLikedName = '';
+
+    async function toggleLikeOffer(row, name, fromCamp, toCamp) {
+      let action;
+      if (myLikedRows.has(row)) {
+        action = 'unlikeOffer';
+        myLikedRows.delete(row);
+      } else {
+        action = 'likeOffer';
+        myLikedRows.add(row);
+      }
+
+      // Update UI immediately
+      const icon = document.getElementById('like-icon-' + row);
+      const text = document.getElementById('like-text-' + row);
+      const btn = document.getElementById('like-btn-' + row);
+      if (action === 'likeOffer') {
+        if (icon) icon.textContent = '💔';
+        if (text) text.textContent = 'Убрать';
+        if (btn) { btn.classList.remove('btn-secondary'); btn.classList.add('btn-danger'); }
+      } else {
+        if (icon) icon.textContent = '❤️';
+        if (text) text.textContent = 'Нравится';
+        if (btn) { btn.classList.remove('btn-danger'); btn.classList.add('btn-secondary'); }
+      }
+      showToast(action === 'likeOffer' ? 'Лайк поставлен!' : 'Лайк убран', 'success');
+
+      if (!API_URL.includes('script.google.com')) return;
+
+      try {
+        await postAPI({ action, likerName: myLikedName, offerRow: row, offerName: name, offerFrom: fromCamp, offerTo: toCamp });
+      } catch (e) { showToast('Ошибка: ' + e.message, 'error'); }
+    }
+
+    // ========== LIKES TAB ==========
+    function setupLikesTab() {
+      setupAutocomplete('likesNameSearch', 'likesNameDropdown',
+        () => participants,
+        p => p.name,
+        p => p.university ? p.university + ', ' + p.camp : p.camp,
+        null
+      );
+    }
+
+    async function loadMyLikes() {
+      const name = document.getElementById('likesNameSearch').value.trim();
+      if (!name) { showToast('Введите ФИО', 'error'); return; }
+
+      myLikedName = name;
+
+      // Determine which offers this person has already liked
+      const likesList = document.getElementById('likesList');
+
+      if (!API_URL.includes('script.google.com')) {
+        likesList.innerHTML = '<div class="card" style="text-align:center;color:var(--gray)">Демо-режим. Подключите API для просмотра лайков.</div>';
+        return;
+      }
+
+      likesList.innerHTML = '<div class="loading"><div class="spinner"></div>Загрузка...</div>';
+
+      try {
+        const [l, matchedOffers, o] = await Promise.all([
+          fetchAPI('likes'),
+          fetchAPI('matches?name=' + encodeURIComponent(name)),
+          fetchAPI('offers')
+        ]);
+
+        likes = Array.isArray(l) ? l : [];
+        offers = Array.isArray(o) ? o : [];
+
+        // Build set of rows liked by others for MY offers
+        const myOfferRows = new Set();
+        offers.forEach(off => { if (off.name === name) myOfferRows.add(off._row); });
+
+        const likedByOthers = likes.filter(like => myOfferRows.has(parseInt(like.offerRow)));
+
+        // Build set of rows I liked
+        myLikedRows = new Set();
+        likes.forEach(like => { if (like.likerName === name) myLikedRows.add(parseInt(like.offerRow)); });
+
+        // Render likes & matches
+        const extraMatches = Array.isArray(matchedOffers) ? matchedOffers : [];
+
+        let html = '';
+
+        if (extraMatches.length > 0) {
+          html += '<h3 style="margin-bottom:12px">❤️ Мэтчи по лайкам</h3>';
+          html += extraMatches.map(m => `
+            <div class="card match-card">
+              <div class="match-arrow">
+                <div class="match-person">
+                  <div class="name">${escapeHtml(m.personA.name)}</div>
+                  <div class="camplabel">${escapeHtml(campLabel(m.personA.from))}</div>
+                </div>
+                <div class="match-swap-icon">⇄</div>
+                <div class="match-person">
+                  <div class="name">${escapeHtml(m.personB.name)}</div>
+                  <div class="camplabel">${escapeHtml(campLabel(m.personB.from))}</div>
+                </div>
+              </div>
+            </div>
+          `).join('');
+        }
+
+        html += '<h3 style="margin-bottom:12px;margin-top:24px">👍 Кто лайкнул ваши заявки</h3>';
+
+        if (likedByOthers.length === 0) {
+          html += '<div class="card" style="text-align:center;color:var(--gray)">Пока никто не лайкнул ваши заявки</div>';
+        } else {
+          html += likedByOthers.map(like => `
+            <div class="card">
+              <div class="card-title">${escapeHtml(like.likerName)} лайкнул вашу заявку</div>
+              <div class="card-meta">Ваш лагерь: ${escapeHtml(campLabel(like.offerFrom))} → ${escapeHtml(campLabel(like.offerTo) || 'не указан')}</div>
+              <div class="card-meta" style="font-size:12px;color:#9CA3AF">${escapeHtml(like.timestamp || '')}</div>
+            </div>
+          `).join('');
+        }
+
+        // Also show my liked rows for offers tab
+        renderOffers();
+        likesList.innerHTML = html;
+      } catch (e) {
+        likesList.innerHTML = '<div class="card" style="text-align:center;color:var(--red)">Ошибка загрузки: ' + escapeHtml(e.message) + '</div>';
+      }
+    }
+
     // ========== HELPERS ==========
     function switchTab(tabName) {
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -1060,6 +1232,7 @@
       if (tabName === 'offers') renderOffers();
       if (tabName === 'matches') renderMatches();
       if (tabName === 'participants') renderParticipants();
+      if (tabName === 'likes') setupLikesTab();
     }
 
     function showToast(message, type) {
