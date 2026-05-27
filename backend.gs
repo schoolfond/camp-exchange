@@ -114,9 +114,10 @@ function getOffers() {
   const data = sheet.getDataRange().getValues();
   if (data.length < 2) return [];
   const headers = data[0];
-  return data.slice(1).map(row => {
+  return data.slice(1).map((row, i) => {
     const obj = {};
-    headers.forEach((h, i) => (obj[h] = row[i] || ""));
+    headers.forEach((h, j) => (obj[h] = row[j] || ""));
+    obj._row = i + 2; // sheet row number for delete
     return obj;
   });
 }

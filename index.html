@@ -164,7 +164,7 @@
     }
 
     /* Form */
-    .form-group { margin-bottom: 20px; }
+    .form-group { margin-bottom: 20px; position: relative; }
     .form-label {
       display: block;
       font-size: 14px;
@@ -188,6 +188,22 @@
       box-shadow: 0 0 0 3px var(--pink-light);
     }
     .form-textarea { resize: vertical; min-height: 80px; }
+
+    /* Autocomplete */
+    .autocomplete-wrap { position: relative; }
+    .autocomplete-drop {
+      position: absolute; top: 100%; left: 0; right: 0; z-index: 50;
+      background: var(--white); border: 1px solid var(--gray-border);
+      border-radius: 10px; max-height: 220px; overflow-y: auto;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.08); display: none;
+    }
+    .autocomplete-drop.open { display: block; }
+    .autocomplete-item {
+      padding: 10px 16px; font-size: 14px; cursor: pointer; border-bottom: 1px solid var(--gray-light);
+    }
+    .autocomplete-item:last-child { border-bottom: none; }
+    .autocomplete-item:hover, .autocomplete-item.hover { background: var(--pink-light); }
+    .autocomplete-item .sub { font-size: 12px; color: var(--gray); margin-top: 2px; }
 
     /* Buttons */
     .btn {
@@ -417,6 +433,20 @@
     <div class="modal" id="modalContent"></div>
   </div>
 
+  <!-- Delete confirmation modal -->
+  <div class="modal-overlay" id="deleteModal">
+    <div class="modal">
+      <h2>Удалить заявку?</h2>
+      <p style="color:var(--gray);margin-bottom:16px">Это действие нельзя отменить. Введите ваше ФИО для подтверждения:</p>
+      <input type="text" class="form-input" id="deleteConfirmName" style="margin-bottom:8px">
+      <div id="deleteError" style="color:var(--red);font-size:13px;margin-bottom:12px"></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-danger" onclick="confirmDelete()">Удалить</button>
+        <button class="btn btn-secondary" onclick="closeDeleteModal()">Отмена</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Content -->
   <div class="container">
     <div class="how-it-works">
@@ -460,19 +490,24 @@
         <form id="offerForm" onsubmit="submitOffer(event)">
           <div class="form-group">
             <label class="form-label">ФИО</label>
-            <input type="text" class="form-input" id="formName" placeholder="Иванов Иван Иванович" required>
+            <div class="autocomplete-wrap">
+              <input type="text" class="form-input" id="formName" placeholder="Начните вводить ФИО..." required autocomplete="off">
+              <div class="autocomplete-drop" id="nameDropdown"></div>
+            </div>
           </div>
           <div class="form-group">
             <label class="form-label">Мой лагерь (который мне назначили)</label>
-            <select class="form-select" id="formFromCamp" required>
-              <option value="">Выберите лагерь...</option>
-            </select>
+            <div class="autocomplete-wrap">
+              <input type="text" class="form-input" id="formFromCamp" placeholder="Начните вводить название лагеря..." required autocomplete="off" readonly>
+              <div class="autocomplete-drop" id="fromCampDropdown"></div>
+            </div>
           </div>
           <div class="form-group">
             <label class="form-label">Хочу в лагерь</label>
-            <select class="form-select" id="formToCamp" required>
-              <option value="">Выберите лагерь...</option>
-            </select>
+            <div class="autocomplete-wrap">
+              <input type="text" class="form-input" id="formToCamp" placeholder="Начните вводить название лагеря..." required autocomplete="off">
+              <div class="autocomplete-drop" id="toCampDropdown"></div>
+            </div>
           </div>
           <div class="form-group">
             <label class="form-label">Контакт для связи (Telegram / телефон)</label>
@@ -551,7 +586,6 @@
         if (currentTab === 'matches') renderMatches();
         if (currentTab === 'offers') renderOffers();
         if (currentTab === 'participants') renderParticipants();
-        if (currentTab === 'create') populateCampSelects();
       });
     }
 
@@ -623,7 +657,6 @@
       renderOffers();
       renderMatches();
       renderParticipants();
-      populateCampSelects();
       updateStats();
     }
 
@@ -664,6 +697,7 @@
                 ${escapeHtml(o.fromCamp)} → <strong>${escapeHtml(o.toCamp)}</strong>
               </div>
             </div>
+            ${o._row ? `<button class="btn btn-sm btn-danger" onclick="deleteOffer(${o._row}, '${escapeHtml(o.name).replace(/'/g, "\\'")}')" title="Удалить заявку">×</button>` : ''}
           </div>
           ${o.contact ? `<div class="card-meta">Контакт: ${escapeHtml(o.contact)}</div>` : ''}
           ${o.note ? `<div class="card-meta">${escapeHtml(o.note)}</div>` : ''}
@@ -805,24 +839,113 @@
     }
 
     // ========== CREATE OFFER ==========
-    function populateCampSelects() {
-      const fromSelect = document.getElementById('formFromCamp');
-      const toSelect = document.getElementById('formToCamp');
+    function setupAutocomplete(inputId, dropdownId, source, getLabel, getSub, onSelect) {
+      const input = document.getElementById(inputId);
+      const dropdown = document.getElementById(dropdownId);
+      let selectedIndex = -1;
 
-      fromSelect.innerHTML = '<option value="">Выберите лагерь...</option>' +
-        camps.map(c => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)}</option>`).join('');
+      function showDropdown(items) {
+        if (!items.length) { dropdown.classList.remove('open'); return; }
+        dropdown.innerHTML = items.map((item, i) => `
+          <div class="autocomplete-item ${i === selectedIndex ? 'hover' : ''}" data-index="${i}">
+            <div>${escapeHtml(getLabel(item))}</div>
+            ${getSub ? `<div class="sub">${escapeHtml(getSub(item))}</div>` : ''}
+          </div>
+        `).join('');
+        dropdown.classList.add('open');
+      }
 
-      toSelect.innerHTML = fromSelect.innerHTML;
+      dropdown.addEventListener('click', e => {
+        const item = e.target.closest('.autocomplete-item');
+        if (!item) return;
+        const idx = parseInt(item.dataset.index);
+        const lastFiltered = input._lastFiltered;
+        if (lastFiltered && lastFiltered[idx]) {
+          input.value = getLabel(lastFiltered[idx]);
+          if (onSelect) onSelect(lastFiltered[idx]);
+        }
+        dropdown.classList.remove('open');
+      });
+
+      input.addEventListener('input', () => {
+        const val = input.value.toLowerCase();
+        const filtered = source().filter(item => getLabel(item).toLowerCase().includes(val));
+        input._lastFiltered = filtered;
+        selectedIndex = -1;
+        showDropdown(filtered);
+      });
+
+      input.addEventListener('focus', () => {
+        if (input._lastFiltered && input._lastFiltered.length > 0 && input.value) {
+          showDropdown(input._lastFiltered);
+        }
+      });
+
+      input.addEventListener('keydown', e => {
+        const items = dropdown.querySelectorAll('.autocomplete-item');
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+          items.forEach((el, i) => el.classList.toggle('hover', i === selectedIndex));
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          selectedIndex = Math.max(selectedIndex - 1, 0);
+          items.forEach((el, i) => el.classList.toggle('hover', i === selectedIndex));
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          if (selectedIndex >= 0 && input._lastFiltered && input._lastFiltered[selectedIndex]) {
+            input.value = getLabel(input._lastFiltered[selectedIndex]);
+            if (onSelect) onSelect(input._lastFiltered[selectedIndex]);
+            dropdown.classList.remove('open');
+          }
+        } else if (e.key === 'Escape') {
+          dropdown.classList.remove('open');
+        }
+      });
+
+      document.addEventListener('click', e => {
+        if (!input.contains(e.target) && !dropdown.contains(e.target)) {
+          dropdown.classList.remove('open');
+        }
+      });
     }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      // Runs after loadAllData sets camps and participants
+      setTimeout(() => {
+        // Name autocomplete - filter participants
+        setupAutocomplete('formName', 'nameDropdown',
+          () => participants,
+          p => p.name,
+          p => p.university ? p.university + ', ' + p.camp : p.camp,
+          p => {
+            document.getElementById('formFromCamp').value = p.camp;
+          }
+        );
+
+        // "Want" camp autocomplete - filter camps
+        setupAutocomplete('formToCamp', 'toCampDropdown',
+          () => camps,
+          c => c.name,
+          c => c.dates + ', ' + c.region,
+          null
+        );
+      }, 500);
+    });
 
     async function submitOffer(event) {
       event.preventDefault();
 
       const name = document.getElementById('formName').value.trim();
-      const fromCamp = document.getElementById('formFromCamp').value;
-      const toCamp = document.getElementById('formToCamp').value;
+      const fromCamp = document.getElementById('formFromCamp').value.trim();
+      const toCamp = document.getElementById('formToCamp').value.trim();
       const contact = document.getElementById('formContact').value.trim();
       const note = document.getElementById('formNote').value.trim();
+
+      if (!name || !fromCamp || !toCamp || !contact) {
+        showToast('Заполните все обязательные поля', 'error');
+        return;
+      }
 
       if (fromCamp === toCamp) {
         showToast('Выберите разные лагеря для обмена', 'error');
@@ -830,8 +953,7 @@
       }
 
       if (!API_URL.includes('script.google.com')) {
-        // Demo mode — simulate success
-        showToast('Демо-режим: заявка создана локально. После настройки API данные будут сохраняться в Google Таблицу.', 'success');
+        showToast('Демо-режим: заявка создана локально.', 'success');
         offers.push({ name, fromCamp, toCamp, contact, note, timestamp: new Date().toLocaleString('ru-RU') });
         document.getElementById('offerForm').reset();
         renderOffers();
@@ -851,9 +973,9 @@
         });
 
         if (result.success) {
-          showToast('Заявка создана! Обновите страницу, чтобы увидеть изменения.', 'success');
+          showToast('Заявка создана!', 'success');
           document.getElementById('offerForm').reset();
-          // Reload data
+          document.getElementById('formFromCamp').value = '';
           const [o, m] = await Promise.all([fetchAPI('offers'), fetchAPI('matches')]);
           offers = Array.isArray(o) ? o : [];
           matches = Array.isArray(m) ? m : [];
@@ -868,6 +990,58 @@
       }
     }
 
+    // ========== DELETE OFFER ==========
+    let deleteRow = null;
+    let deleteName = '';
+
+    function deleteOffer(row, name) {
+      deleteRow = row;
+      deleteName = name;
+      document.getElementById('deleteConfirmName').value = '';
+      document.getElementById('deleteConfirmName').placeholder = 'Введите "' + name + '" для подтверждения';
+      document.getElementById('deleteError').textContent = '';
+      document.getElementById('deleteModal').classList.add('open');
+      setTimeout(() => document.getElementById('deleteConfirmName').focus(), 100);
+    }
+
+    function closeDeleteModal() {
+      document.getElementById('deleteModal').classList.remove('open');
+      deleteRow = null;
+      deleteName = '';
+    }
+
+    async function confirmDelete() {
+      const input = document.getElementById('deleteConfirmName');
+      if (input.value.trim() !== deleteName) {
+        document.getElementById('deleteError').textContent = 'Имя не совпадает. Попробуйте ещё раз.';
+        return;
+      }
+
+      if (!API_URL.includes('script.google.com')) {
+        showToast('Демо-режим: удаление невозможно', 'error');
+        closeDeleteModal();
+        return;
+      }
+
+      try {
+        const result = await postAPI({ action: 'deleteOffer', row: deleteRow });
+        if (result.success) {
+          showToast('Заявка удалена', 'success');
+          closeDeleteModal();
+          const [o, m] = await Promise.all([fetchAPI('offers'), fetchAPI('matches')]);
+          offers = Array.isArray(o) ? o : [];
+          matches = Array.isArray(m) ? m : [];
+          renderOffers();
+          renderMatches();
+          updateStats();
+        } else {
+          document.getElementById('deleteError').textContent = result.error || 'Ошибка удаления';
+        }
+      } catch (e) {
+        document.getElementById('deleteError').textContent = 'Ошибка сети: ' + e.message;
+      }
+    }
+
     // ========== HELPERS ==========
     function switchTab(tabName) {
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -879,7 +1053,6 @@
       if (tabName === 'offers') renderOffers();
       if (tabName === 'matches') renderMatches();
       if (tabName === 'participants') renderParticipants();
-      if (tabName === 'create') populateCampSelects();
     }
 
     function showToast(message, type) {
