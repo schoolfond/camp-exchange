@@ -585,7 +585,7 @@
       <div class="step-card">
         <div class="step-number">2</div>
         <h3>Создай заявку</h3>
-        <p>Укажи, на какой лагерь хочешь обменяться, и оставь контакт</p>
+        <p>Оставь контакт и (по желанию) укажи, в какой лагерь хочешь обменяться</p>
       </div>
       <div class="step-card">
         <div class="step-number">3</div>
@@ -635,9 +635,9 @@
             </div>
           </div>
           <div class="form-group">
-            <label class="form-label">Хочу в лагерь</label>
+            <label class="form-label">Хочу в лагерь <span style="color:var(--gray);font-weight:400">(необязательно)</span></label>
             <div class="autocomplete-wrap">
-              <input type="text" class="form-input" id="formToCamp" placeholder="Начните вводить название лагеря..." required autocomplete="off">
+              <input type="text" class="form-input" id="formToCamp" placeholder="Оставь пустым, если открыт ко всем вариантам" autocomplete="off">
               <div class="autocomplete-drop" id="toCampDropdown"></div>
             </div>
           </div>
@@ -1531,12 +1531,12 @@
       const contact = document.getElementById('formContact').value.trim();
       const note = document.getElementById('formNote').value.trim();
 
-      if (!name || !fromCamp || !toCamp || !contact) {
-        showToast('Заполните все обязательные поля', 'error');
+      if (!name || !fromCamp || !contact) {
+        showToast('Заполните ФИО, ваш лагерь и контакт', 'error');
         return;
       }
 
-      if (fromCamp === toCamp) {
+      if (toCamp && fromCamp === toCamp) {
         showToast('Выберите разные лагеря для обмена', 'error');
         return;
       }
