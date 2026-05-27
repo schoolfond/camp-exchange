@@ -406,7 +406,9 @@ function getLikesFor(name) {
 
 // --- Matches ---
 function findMatches(filterName) {
-  const offers = getOffers().filter(o => o.toCamp); // only offers with target
+  // Exclude offers from participants who confirmed «Точно еду / договор подписан»
+  const confirmedNames = new Set(getConfirmedList_().map(c => c.name));
+  const offers = getOffers().filter(o => o.toCamp && !confirmedNames.has(o.name));
   const likesAll = getSheet("likes");
   const matches = [];
 
@@ -425,22 +427,21 @@ function findMatches(filterName) {
   }
 
   // 2. Cross-likes: A liked B's offer AND B liked A's offer (only when filtering by name)
-  if (filterName) {
-    const myOffers = offers.filter(o => o.name === filterName);
-    const myOfferRows = new Set(myOffers.map(o => o._row));
-
+  // Skip entirely if the filtered user is themselves confirmed.
+  if (filterName && !confirmedNames.has(filterName)) {
     for (const like of likesAll) {
       if (like.offerName !== filterName) continue;
-      // like.likerName liked MY offer
-      // Check if I also liked THEIR offer
+      if (confirmedNames.has(like.likerName)) continue; // skip if other side confirmed
+      // like.likerName liked MY offer; check if I also liked THEIR offer
       const likedByMe = likesAll.some(l =>
         l.likerName === filterName && l.offerName === like.likerName
       );
       if (likedByMe) {
         const theirOffer = offers.find(o => o.name === like.likerName);
+        if (!theirOffer) continue; // their offer was removed/confirmed-out
         matches.push({
           type: "like",
-          personA: { name: filterName, from: theirOffer?.fromCamp || "", to: theirOffer?.toCamp || "", contact: "" },
+          personA: { name: filterName, from: theirOffer.fromCamp, to: theirOffer.toCamp, contact: "" },
           personB: { name: like.likerName, from: like.offerFrom, to: like.offerTo, contact: "" }
         });
       }
