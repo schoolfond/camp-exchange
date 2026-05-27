@@ -816,14 +816,20 @@
       }
 
       container.innerHTML = `<p style="margin-bottom:12px;color:var(--gray);font-size:14px">Найдено: ${filtered.length}</p>` +
-        filtered.map(p => `
+        filtered.map(p => {
+          const offer = offers.find(o => o.name === p.name);
+          return `
         <div class="card">
           <div class="card-title" style="font-size:16px">${escapeHtml(p.name)}</div>
           <div class="card-meta">${escapeHtml(p.university || '')}</div>
           <div class="card-meta">${escapeHtml(p.city || '')}, ${escapeHtml(p.region || '')}</div>
           <span class="card-badge badge-green" style="margin-top:8px;display:inline-block">${escapeHtml(p.camp || '—')}</span>
+          ${offer
+            ? `<span class="card-badge badge-yellow" style="margin-top:8px;display:inline-block;margin-left:6px">Хочет в: ${escapeHtml(offer.toCamp)}</span>`
+            : `<span class="card-badge" style="margin-top:8px;display:inline-block;margin-left:6px;background:var(--gray-light);color:var(--gray);font-weight:500">Не ищет обмен</span>`
+          }
         </div>
-      `).join('');
+      `}).join('');
     }
 
     function filterByMonth(month) {
