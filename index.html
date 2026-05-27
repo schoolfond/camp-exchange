@@ -582,7 +582,7 @@
     let offers = [];
     let matches = [];
     let likes = [];
-    let myLikeRows = null; // set of offer rows liked by the person searched in "likes" tab
+    let myLikedRows = new Set();
     let currentTab = 'offers';
 
     // ========== INIT ==========
@@ -716,7 +716,7 @@
       }
 
       container.innerHTML = filtered.map((o, i) => {
-        const isLiked = myLikeRows ? myLikeRows.has(o._row) : false;
+        const isLiked = myLikedRows ? myLikedRows.has(o._row) : false;
         return `
         <div class="card">
           <div class="card-header">
@@ -1094,7 +1094,6 @@
     }
 
     // ========== LIKE / UNLIKE ==========
-    let myLikedRows = new Set();
     let myLikedName = '';
 
     async function toggleLikeOffer(row, name, fromCamp, toCamp) {
