@@ -802,7 +802,7 @@
       try {
         const [o, m, l] = await Promise.all([
           fetchAPI('offers'),
-          fetchAPI('matches'),
+          fetchAPI(matchesQuery()),
           fetchAPI('leaders')
         ]);
         if (Array.isArray(o) && o.length > 0) offers = o;
@@ -816,6 +816,22 @@
         if (currentTab === 'matches') renderMatches();
         updateStats();
       }
+    }
+
+    function matchesQuery() {
+      return currentUser && currentUser.role === 'volunteer'
+        ? 'matches&name=' + encodeURIComponent(currentUser.name)
+        : 'matches';
+    }
+
+    async function reloadMatches() {
+      if (isDemoMode) return;
+      try {
+        const m = await fetchAPI(matchesQuery());
+        matches = Array.isArray(m) ? m : [];
+        if (currentTab === 'matches') renderMatches();
+        updateStats();
+      } catch (e) { /* ignore */ }
     }
 
     function loadDemoData() {
@@ -918,13 +934,26 @@
     function renderMatches() {
       const container = document.getElementById('matchesList');
 
+      const notice = !currentUser
+        ? `<div class="notice" style="margin:0 0 16px">
+             <strong>Без авторизации показаны только прямые встречные обмены.</strong>
+             Чтобы увидеть мэтчи по лайкам (когда вы и кто-то другой лайкнули заявки друг друга) —
+             <a href="#" onclick="event.preventDefault();openLoginModal()">войдите</a>.
+           </div>`
+        : '';
+
       if (matches.length === 0) {
-        container.innerHTML = '<div class="card" style="text-align:center;color:var(--gray)">Мэтчей пока нет. Как только появятся встречные заявки — они отобразятся здесь.</div>';
+        container.innerHTML = notice + '<div class="card" style="text-align:center;color:var(--gray)">Мэтчей пока нет. Как только появятся встречные заявки — они отобразятся здесь.</div>';
         return;
       }
 
-      container.innerHTML = matches.map((m, i) => `
+      container.innerHTML = notice + matches.map((m, i) => {
+        const badge = m.type === 'like'
+          ? '<span class="card-badge badge-yellow" style="margin-bottom:8px;display:inline-block">❤️ Мэтч по лайкам</span>'
+          : '<span class="card-badge badge-green" style="margin-bottom:8px;display:inline-block">⇄ Прямой обмен</span>';
+        return `
         <div class="card match-card">
+          ${badge}
           <div class="match-arrow">
             <div class="match-person">
               <div class="name">${escapeHtml(m.personA.name)}</div>
@@ -939,7 +968,7 @@
             </div>
           </div>
         </div>
-      `).join('');
+      `; }).join('');
     }
 
     // ========== PARTICIPANTS ==========
@@ -1209,6 +1238,7 @@
       if (user) localStorage.setItem('campExchangeUser', JSON.stringify(user));
       else localStorage.removeItem('campExchangeUser');
       updateAuthUI();
+      reloadMatches();
     }
 
     function logout() {
