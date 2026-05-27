@@ -642,31 +642,36 @@
     async function loadAllData() {
       const isDemo = !API_URL.includes('script.google.com');
 
-      // Load camps/participants from bundled data files (faster, offline-safe)
+      // Always load camps/participants from bundled files first (instant)
       loadDemoData();
 
+      // If demo mode, just render and stop
       if (isDemo) {
         document.getElementById('loading').style.display = 'none';
         renderAll();
         return;
       }
 
-      // Load offers and matches from API
+      // Show page immediately with demo data, then load API in background
+      document.getElementById('loading').style.display = 'none';
+      renderAll();
+
+      // Background: load offers and matches from API
       try {
         const [o, m] = await Promise.all([
           fetchAPI('offers'),
           fetchAPI('matches')
         ]);
-        offers = Array.isArray(o) ? o : [];
-        matches = Array.isArray(m) ? m : [];
+        if (Array.isArray(o) && o.length > 0) offers = o;
+        if (Array.isArray(m) && m.length > 0) matches = m;
       } catch (e) {
-        console.error('Ошибка загрузки offers/matches:', e);
-        offers = [];
-        matches = [];
+        console.error('API load error:', e);
+      } finally {
+        // Re-render with new data if viewer is on those tabs
+        if (currentTab === 'offers' || currentTab === 'matches') renderOffers();
+        if (currentTab === 'matches') renderMatches();
+        updateStats();
       }
-
-      document.getElementById('loading').style.display = 'none';
-      try { renderAll(); } catch(e) { console.error('render error:', e); }
     }
 
     function loadDemoData() {
