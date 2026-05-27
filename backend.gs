@@ -27,6 +27,7 @@ function handleGet(e) {
         if (!name) return jsonResponse({ error: "Missing name" }, 400);
         return jsonResponse({ inList: isParticipant_(name), registered: !!findUserRow_(name) });
       }
+      case "leaders": return jsonResponse(getLeadersList_());
       default: return jsonResponse({ error: "Unknown action" }, 400);
     }
   } catch (err) {
@@ -57,6 +58,31 @@ function handlePost(e) {
       if (!name || !passwordHash) return jsonResponse({ error: "Missing name or passwordHash" }, 400);
       if (!verifyAuth_(name, passwordHash)) return jsonResponse({ error: "Неверный пароль" }, 401);
       return jsonResponse({ success: true });
+    }
+
+    if (action === "registerLeader") {
+      const name = params.name;
+      const camp = params.camp;
+      const contact = params.contact || "";
+      const passwordHash = params.passwordHash;
+      if (!name || !camp || !passwordHash) return jsonResponse({ error: "Missing fields" }, 400);
+      if (!isCamp_(camp)) return jsonResponse({ error: "Такого лагеря нет в списке" }, 400);
+      if (findLeaderByCamp_(camp)) return jsonResponse({ error: "Этот лагерь уже занят кэмп-лидером" }, 409);
+      const sheet = getLeadersSheet_();
+      const timestamp = new Date().toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
+      sheet.appendRow([camp, name, passwordHash, contact, timestamp]);
+      return jsonResponse({ success: true });
+    }
+
+    if (action === "loginLeader") {
+      const camp = params.camp;
+      const passwordHash = params.passwordHash;
+      if (!camp || !passwordHash) return jsonResponse({ error: "Missing fields" }, 400);
+      const leader = findLeaderByCamp_(camp);
+      if (!leader || leader.passwordHash !== passwordHash) {
+        return jsonResponse({ error: "Неверный пароль" }, 401);
+      }
+      return jsonResponse({ success: true, name: leader.name, camp: leader.camp });
     }
 
     if (action === "createOffer") {
@@ -193,6 +219,55 @@ function verifyAuth_(name, passwordHash) {
   const user = findUserRow_(name);
   if (!user) return false;
   return user.passwordHash === passwordHash;
+}
+
+function getLeadersSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName("leaders");
+  if (!sheet) {
+    sheet = ss.insertSheet("leaders");
+    sheet.appendRow(["camp", "name", "passwordHash", "contact", "createdAt"]);
+  }
+  return sheet;
+}
+
+function findLeaderByCamp_(camp) {
+  const sheet = getLeadersSheet_();
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === camp) {
+      return {
+        row: i + 1,
+        camp: String(data[i][0]),
+        name: String(data[i][1] || ""),
+        passwordHash: String(data[i][2] || ""),
+        contact: String(data[i][3] || "")
+      };
+    }
+  }
+  return null;
+}
+
+function getLeadersList_() {
+  // Public list for autocomplete — no passwordHash exposed.
+  const sheet = getLeadersSheet_();
+  const data = sheet.getDataRange().getValues();
+  if (data.length < 2) return [];
+  return data.slice(1).map(row => ({
+    camp: String(row[0] || ""),
+    name: String(row[1] || ""),
+    contact: String(row[3] || "")
+  }));
+}
+
+function isCamp_(camp) {
+  const sheet = getSheetByName_("camps");
+  if (!sheet) return false;
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === camp) return true;
+  }
+  return false;
 }
 
 // --- Helpers ---

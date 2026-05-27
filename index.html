@@ -424,6 +424,28 @@
     .auth-hint { font-size: 13px; margin-top: 6px; color: var(--gray); }
     .auth-hint.error { color: var(--red); }
     .auth-error { color: var(--red); font-size: 13px; margin-bottom: 12px; }
+    .auth-tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--gray-border);
+    }
+    .auth-tab {
+      flex: 1;
+      padding: 10px 12px;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--gray);
+      cursor: pointer;
+      margin-bottom: -1px;
+    }
+    .auth-tab.active { color: var(--pink); border-bottom-color: var(--pink); }
+    .auth-tab:hover { color: var(--pink); }
+    .auth-status-role { font-size: 11px; color: var(--gray); font-weight: 500; margin-left: 4px; }
 
     /* Responsive */
     @media (max-width: 768px) {
@@ -447,26 +469,66 @@
   <!-- Auth modal -->
   <div class="modal-overlay" id="authModal">
     <div class="modal" style="max-width:480px">
-      <h2 id="authTitle" style="margin-bottom:8px">Вход</h2>
-      <p style="color:var(--gray);font-size:14px;margin-bottom:20px">
-        Авторизация нужна, чтобы создавать заявки и ставить лайки. Найди себя в списке участников.
-      </p>
-      <div class="form-group">
-        <label class="form-label">ФИО</label>
-        <div class="autocomplete-wrap">
-          <input type="text" class="form-input" id="authName" placeholder="Начните вводить ФИО..." autocomplete="off">
-          <div class="autocomplete-drop" id="authNameDropdown"></div>
+      <div class="auth-tabs">
+        <button class="auth-tab active" data-authtab="login" onclick="switchAuthTab('login')">Войти</button>
+        <button class="auth-tab" data-authtab="leader" onclick="switchAuthTab('leader')">Я кэмп-лидер</button>
+      </div>
+
+      <!-- Login pane (volunteer + existing leader) -->
+      <div class="auth-pane" id="authPane-login">
+        <p style="color:var(--gray);font-size:14px;margin-bottom:20px">
+          Найди себя в списке. Подпись справа показывает тип аккаунта — волонтёр или кэмп-лидер.
+        </p>
+        <div class="form-group">
+          <label class="form-label">ФИО</label>
+          <div class="autocomplete-wrap">
+            <input type="text" class="form-input" id="authName" placeholder="Начните вводить ФИО..." autocomplete="off">
+            <div class="autocomplete-drop" id="authNameDropdown"></div>
+          </div>
+          <div id="authNameHint" class="auth-hint"></div>
         </div>
-        <div id="authNameHint" class="auth-hint"></div>
+        <div class="form-group" id="authPasswordGroup" style="display:none">
+          <label class="form-label" id="authPasswordLabel">Пароль</label>
+          <input type="password" class="form-input" id="authPassword" autocomplete="current-password">
+        </div>
+        <div id="authError" class="auth-error" style="display:none"></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" id="authSubmit" onclick="submitAuth()" disabled>Продолжить</button>
+          <button class="btn btn-secondary" onclick="closeAuthModal()">Отмена</button>
+        </div>
       </div>
-      <div class="form-group" id="authPasswordGroup" style="display:none">
-        <label class="form-label" id="authPasswordLabel">Пароль</label>
-        <input type="password" class="form-input" id="authPassword" autocomplete="current-password">
-      </div>
-      <div id="authError" class="auth-error" style="display:none"></div>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-primary" id="authSubmit" onclick="submitAuth()" disabled>Продолжить</button>
-        <button class="btn btn-secondary" onclick="closeAuthModal()">Отмена</button>
+
+      <!-- Leader register pane -->
+      <div class="auth-pane" id="authPane-leader" style="display:none">
+        <p style="color:var(--gray);font-size:14px;margin-bottom:20px">
+          Зарегистрируйся как кэмп-лидер своего лагеря. Один лагерь — один кэмп-лидер.
+          Уже зарегистрированы? Войди через вкладку «Войти».
+        </p>
+        <div class="form-group">
+          <label class="form-label">ФИО кэмп-лидера</label>
+          <input type="text" class="form-input" id="leaderName" placeholder="Иванов Иван Иванович" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Лагерь</label>
+          <div class="autocomplete-wrap">
+            <input type="text" class="form-input" id="leaderCamp" placeholder="Начните вводить название лагеря..." autocomplete="off">
+            <div class="autocomplete-drop" id="leaderCampDropdown"></div>
+          </div>
+          <div id="leaderCampHint" class="auth-hint"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Контакт (Telegram / телефон / email)</label>
+          <input type="text" class="form-input" id="leaderContact" placeholder="@username">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Придумайте пароль</label>
+          <input type="password" class="form-input" id="leaderPassword" autocomplete="new-password">
+        </div>
+        <div id="leaderError" class="auth-error" style="display:none"></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" id="leaderSubmit" onclick="submitLeaderRegister()">Зарегистрироваться</button>
+          <button class="btn btn-secondary" onclick="closeAuthModal()">Отмена</button>
+        </div>
       </div>
     </div>
   </div>
@@ -643,12 +705,14 @@
     // ========== STATE ==========
     let camps = [];
     let participants = [];
+    let leaders = []; // { camp, name, contact }
     let offers = [];
     let matches = [];
     let likes = [];
     let myLikedRows = new Set();
     let currentTab = 'offers';
-    let currentUser = null; // { name, passwordHash }
+    // currentUser: { role: 'volunteer' | 'leader', name, passwordHash, camp? }
+    let currentUser = null;
     let pendingAuthAction = null;
 
     // ========== INIT ==========
@@ -724,14 +788,16 @@
       document.getElementById('loading').style.display = 'none';
       renderAll();
 
-      // Background: load offers and matches from API
+      // Background: load offers, matches and leaders from API
       try {
-        const [o, m] = await Promise.all([
+        const [o, m, l] = await Promise.all([
           fetchAPI('offers'),
-          fetchAPI('matches')
+          fetchAPI('matches'),
+          fetchAPI('leaders')
         ]);
         if (Array.isArray(o) && o.length > 0) offers = o;
         if (Array.isArray(m) && m.length > 0) matches = m;
+        if (Array.isArray(l)) leaders = l;
       } catch (e) {
         console.error('API load error:', e);
       } finally {
@@ -802,9 +868,11 @@
 
       container.innerHTML = filtered.map((o, i) => {
         const isLiked = myLikedRows ? myLikedRows.has(o._row) : false;
-        const isOwn = currentUser && currentUser.name === o.name;
+        const isVolunteer = currentUser && currentUser.role === 'volunteer';
+        const isLeader = currentUser && currentUser.role === 'leader';
+        const isOwn = isVolunteer && currentUser.name === o.name;
         const canDelete = o._row && isOwn;
-        const canLike = o._row && !isOwn;
+        const canLike = o._row && !isOwn && !isLeader;
         return `
         <div class="card">
           <div class="card-header">
@@ -1040,12 +1108,38 @@
           null
         );
 
-        // Auth modal: ФИО autocomplete
+        // Auth modal — login pane: combined ФИО autocomplete (volunteers + leaders)
         setupAutocomplete('authName', 'authNameDropdown',
-          () => participants,
-          p => p.name,
-          p => p.university ? p.university + ', ' + p.camp : (p.camp || ''),
-          p => onAuthNameSelected(p.name)
+          () => {
+            const vol = (participants || []).map(p => ({
+              kind: 'volunteer',
+              name: p.name,
+              university: p.university,
+              camp: p.camp
+            }));
+            const led = (leaders || []).map(l => ({
+              kind: 'leader',
+              name: l.name,
+              camp: l.camp
+            }));
+            return [...vol, ...led];
+          },
+          item => item.name,
+          item => item.kind === 'leader'
+            ? 'Кэмп-лидер · ' + item.camp
+            : 'Волонтёр' + (item.university ? ' · ' + item.university : (item.camp ? ' · ' + item.camp : '')),
+          item => onAuthAccountSelected(item)
+        );
+
+        // Auth modal — leader pane: camp autocomplete (camps without existing leader)
+        setupAutocomplete('leaderCamp', 'leaderCampDropdown',
+          () => {
+            const taken = new Set((leaders || []).map(l => l.camp));
+            return (camps || []).filter(c => !taken.has(c.name));
+          },
+          c => c.name,
+          c => c.dates ? c.dates + (c.region ? ' · ' + c.region : '') : (c.region || ''),
+          null
         );
 
         // Participants tab: camp filter autocomplete (respects active month chip)
@@ -1123,21 +1217,32 @@
 
     function updateAuthUI() {
       const status = document.getElementById('authStatus');
+      const formName = document.getElementById('formName');
       if (currentUser) {
+        const roleLabel = currentUser.role === 'leader'
+          ? 'кэмп-лидер · ' + (currentUser.camp || '')
+          : 'волонтёр';
+        const tooltip = currentUser.name + (currentUser.role === 'leader' ? ' — ' + roleLabel : '');
         status.innerHTML = `
-          <span class="auth-status-name" title="${escapeHtml(currentUser.name)}">${escapeHtml(currentUser.name)}</span>
+          <span class="auth-status-name" title="${escapeHtml(tooltip)}">${escapeHtml(currentUser.name)}<span class="auth-status-role">· ${escapeHtml(roleLabel)}</span></span>
           <button class="btn btn-sm btn-secondary" onclick="logout()">Выйти</button>
         `;
-        const formName = document.getElementById('formName');
         if (formName) {
-          formName.value = currentUser.name;
-          formName.readOnly = true;
-          const p = (participants || []).find(p => p.name === currentUser.name);
-          if (p) document.getElementById('formFromCamp').value = p.camp;
+          if (currentUser.role === 'volunteer') {
+            formName.value = currentUser.name;
+            formName.readOnly = true;
+            const p = (participants || []).find(p => p.name === currentUser.name);
+            if (p) document.getElementById('formFromCamp').value = p.camp;
+          } else {
+            // Leaders don't create offers; clear & lock form
+            formName.value = '';
+            formName.readOnly = false;
+            const fromCamp = document.getElementById('formFromCamp');
+            if (fromCamp) fromCamp.value = '';
+          }
         }
       } else {
         status.innerHTML = `<button class="btn btn-sm btn-primary" onclick="openLoginModal()">Войти</button>`;
-        const formName = document.getElementById('formName');
         if (formName) {
           formName.value = '';
           formName.readOnly = false;
@@ -1145,7 +1250,7 @@
           if (fromCamp) fromCamp.value = '';
         }
       }
-      // Refresh offer cards so buttons reflect ownership
+      // Refresh offer cards so buttons reflect ownership / role
       if (offers && offers.length) renderOffers();
     }
 
@@ -1155,11 +1260,21 @@
       openLoginModal();
     }
 
-    let authSelectedName = null;
-    let authState = 'idle'; // idle | login | register
+    // authSelectedAccount = { kind: 'volunteer' | 'leader', name, camp? }
+    let authSelectedAccount = null;
+    let authState = 'idle'; // idle | login | register | loginLeader
+
+    function switchAuthTab(tab) {
+      document.querySelectorAll('.auth-tab').forEach(t => t.classList.toggle('active', t.dataset.authtab === tab));
+      document.getElementById('authPane-login').style.display = tab === 'login' ? '' : 'none';
+      document.getElementById('authPane-leader').style.display = tab === 'leader' ? '' : 'none';
+      const focus = tab === 'login' ? 'authName' : 'leaderName';
+      setTimeout(() => document.getElementById(focus)?.focus(), 50);
+    }
 
     function openLoginModal() {
-      authSelectedName = null;
+      // Reset login pane
+      authSelectedAccount = null;
       authState = 'idle';
       document.getElementById('authName').value = '';
       document.getElementById('authPassword').value = '';
@@ -1170,9 +1285,21 @@
       const submit = document.getElementById('authSubmit');
       submit.disabled = true;
       submit.textContent = 'Продолжить';
-      document.getElementById('authTitle').textContent = 'Вход';
+
+      // Reset leader pane
+      ['leaderName', 'leaderCamp', 'leaderContact', 'leaderPassword'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+      const leaderErr = document.getElementById('leaderError');
+      if (leaderErr) leaderErr.style.display = 'none';
+      const leaderCampHint = document.getElementById('leaderCampHint');
+      if (leaderCampHint) { leaderCampHint.textContent = ''; leaderCampHint.classList.remove('error'); }
+      const leaderSubmit = document.getElementById('leaderSubmit');
+      if (leaderSubmit) leaderSubmit.disabled = false;
+
+      switchAuthTab('login');
       document.getElementById('authModal').classList.add('open');
-      setTimeout(() => document.getElementById('authName').focus(), 50);
     }
 
     function closeAuthModal() {
@@ -1180,21 +1307,30 @@
       pendingAuthAction = null;
     }
 
-    async function onAuthNameSelected(name) {
-      authSelectedName = name;
+    async function onAuthAccountSelected(account) {
+      authSelectedAccount = account;
       const hint = document.getElementById('authNameHint');
       const submit = document.getElementById('authSubmit');
       hint.classList.remove('error');
-      hint.textContent = 'Проверяем...';
       submit.disabled = true;
 
+      if (account.kind === 'leader') {
+        // Leader entry only appears in autocomplete if already registered → straight to password
+        authState = 'loginLeader';
+        hint.textContent = 'Кэмп-лидер лагеря «' + account.camp + '». Введите ваш пароль.';
+        showAuthPasswordStep('login');
+        return;
+      }
+
+      // Volunteer flow: check whether they already have a password
+      hint.textContent = 'Проверяем...';
       if (isDemoMode) {
         authState = 'register';
-        showAuthPasswordStep(false);
+        showAuthPasswordStep('register');
         return;
       }
       try {
-        const result = await fetchAPI('checkUser&name=' + encodeURIComponent(name));
+        const result = await fetchAPI('checkUser&name=' + encodeURIComponent(account.name));
         if (result && result.error) {
           hint.classList.add('error');
           hint.textContent = result.error;
@@ -1206,32 +1342,37 @@
           return;
         }
         authState = result.registered ? 'login' : 'register';
-        showAuthPasswordStep(result.registered);
+        showAuthPasswordStep(authState);
       } catch (e) {
         hint.classList.add('error');
         hint.textContent = 'Ошибка сети: ' + e.message;
       }
     }
 
-    function showAuthPasswordStep(isLogin) {
+    function showAuthPasswordStep(state) {
       const hint = document.getElementById('authNameHint');
-      hint.classList.remove('error');
-      hint.textContent = isLogin
-        ? 'Введите ваш пароль'
-        : 'Первый вход — задайте простой пароль';
+      const submit = document.getElementById('authSubmit');
+      const isLogin = state === 'login' || state === 'loginLeader';
+      if (state === 'register') {
+        hint.classList.remove('error');
+        hint.textContent = 'Первый вход — задайте простой пароль';
+      } else if (state === 'login') {
+        hint.classList.remove('error');
+        hint.textContent = 'Введите ваш пароль';
+      }
+      // for loginLeader, hint is set by caller
       document.getElementById('authPasswordGroup').style.display = 'block';
       document.getElementById('authPasswordLabel').textContent = isLogin ? 'Пароль' : 'Придумайте пароль';
       document.getElementById('authPassword').value = '';
-      const submit = document.getElementById('authSubmit');
       submit.disabled = false;
-      submit.textContent = isLogin ? 'Войти' : 'Зарегистрироваться';
+      submit.textContent = state === 'register' ? 'Зарегистрироваться' : 'Войти';
       setTimeout(() => document.getElementById('authPassword').focus(), 50);
     }
 
     async function submitAuth() {
       const password = document.getElementById('authPassword').value;
       const err = document.getElementById('authError');
-      if (!authSelectedName) return;
+      if (!authSelectedAccount) return;
       if (!password || password.length < 4) {
         err.textContent = 'Пароль минимум 4 символа';
         err.style.display = 'block';
@@ -1243,17 +1384,90 @@
 
       try {
         if (isDemoMode) {
-          saveCurrentUser({ name: authSelectedName, passwordHash: 'demo' });
+          const user = authSelectedAccount.kind === 'leader'
+            ? { role: 'leader', name: authSelectedAccount.name, camp: authSelectedAccount.camp, passwordHash: 'demo' }
+            : { role: 'volunteer', name: authSelectedAccount.name, passwordHash: 'demo' };
+          saveCurrentUser(user);
           closeAuthModal();
           showToast('Демо-режим: вход выполнен', 'success');
           runPendingAuthAction();
           return;
         }
         const passwordHash = await sha256(password);
+        let result, user;
+        if (authState === 'loginLeader') {
+          result = await postAPI({
+            action: 'loginLeader',
+            camp: authSelectedAccount.camp,
+            passwordHash
+          });
+          user = { role: 'leader', name: authSelectedAccount.name, camp: authSelectedAccount.camp, passwordHash };
+        } else {
+          result = await postAPI({
+            action: authState === 'login' ? 'login' : 'register',
+            name: authSelectedAccount.name,
+            passwordHash
+          });
+          user = { role: 'volunteer', name: authSelectedAccount.name, passwordHash };
+        }
+        if (!result.success) {
+          err.textContent = result.error || 'Ошибка';
+          err.style.display = 'block';
+          submit.disabled = false;
+          return;
+        }
+        saveCurrentUser(user);
+        closeAuthModal();
+        const msg = authState === 'register' ? 'Регистрация успешна!' : 'Добро пожаловать!';
+        showToast(msg, 'success');
+        if (user.role === 'volunteer') loadMyLikesForCurrentUser();
+        runPendingAuthAction();
+      } catch (e) {
+        err.textContent = 'Ошибка сети: ' + e.message;
+        err.style.display = 'block';
+        submit.disabled = false;
+      }
+    }
+
+    async function submitLeaderRegister() {
+      const name = document.getElementById('leaderName').value.trim();
+      const camp = document.getElementById('leaderCamp').value.trim();
+      const contact = document.getElementById('leaderContact').value.trim();
+      const password = document.getElementById('leaderPassword').value;
+      const err = document.getElementById('leaderError');
+
+      if (!name || !camp || !contact || !password) {
+        err.textContent = 'Заполните все поля';
+        err.style.display = 'block';
+        return;
+      }
+      if (password.length < 4) {
+        err.textContent = 'Пароль минимум 4 символа';
+        err.style.display = 'block';
+        return;
+      }
+      // Validate camp is in the camps list
+      if (!camps.some(c => c.name === camp)) {
+        err.textContent = 'Выберите лагерь из подсказок';
+        err.style.display = 'block';
+        return;
+      }
+      err.style.display = 'none';
+      const submit = document.getElementById('leaderSubmit');
+      submit.disabled = true;
+
+      try {
+        if (isDemoMode) {
+          saveCurrentUser({ role: 'leader', name, camp, passwordHash: 'demo' });
+          closeAuthModal();
+          showToast('Демо-режим: регистрация выполнена', 'success');
+          runPendingAuthAction();
+          return;
+        }
+        const passwordHash = await sha256(password);
         const result = await postAPI({
-          action: authState === 'login' ? 'login' : 'register',
-          name: authSelectedName,
-          passwordHash: passwordHash
+          action: 'registerLeader',
+          name, camp, contact, passwordHash
         });
         if (!result.success) {
           err.textContent = result.error || 'Ошибка';
@@ -1261,10 +1475,11 @@
           submit.disabled = false;
           return;
         }
-        saveCurrentUser({ name: authSelectedName, passwordHash });
+        saveCurrentUser({ role: 'leader', name, camp, passwordHash });
+        // Add to local leaders list so it shows in login autocomplete
+        leaders.push({ camp, name, contact });
         closeAuthModal();
-        showToast(authState === 'login' ? 'Добро пожаловать!' : 'Регистрация успешна!', 'success');
-        loadMyLikesForCurrentUser();
+        showToast('Зарегистрированы как кэмп-лидер!', 'success');
         runPendingAuthAction();
       } catch (e) {
         err.textContent = 'Ошибка сети: ' + e.message;
@@ -1290,7 +1505,13 @@
     // ========== CREATE OFFER ==========
     async function submitOffer(event) {
       event.preventDefault();
-      requireAuth(() => doSubmitOffer());
+      requireAuth(() => {
+        if (currentUser.role === 'leader') {
+          showToast('Создавать заявки на обмен могут только волонтёры', 'error');
+          return;
+        }
+        doSubmitOffer();
+      });
     }
 
     async function doSubmitOffer() {
