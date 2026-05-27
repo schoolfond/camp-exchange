@@ -547,6 +547,7 @@
       <button class="tab" data-tab="matches">Найденные мэтчи</button>
       <button class="tab" data-tab="create">Создать заявку</button>
       <button class="tab" data-tab="participants">Участники</button>
+      <button class="tab" data-tab="camps">Кэмпы</button>
       <button class="tab" data-tab="likes">Лайки</button>
     </div>
   </section>
@@ -675,6 +676,14 @@
       <div id="participantsList"></div>
     </section>
 
+    <!-- Section: Camps (leaders directory) -->
+    <section class="section" id="section-camps">
+      <div class="search-bar">
+        <input type="text" id="searchCamps" placeholder="Поиск по лагерю, ФИО или контакту..." oninput="renderCamps()">
+      </div>
+      <div id="campsList"></div>
+    </section>
+
     <!-- Section: Likes -->
     <section class="section" id="section-likes">
       <p style="color:var(--gray);margin-bottom:16px">Введите своё ФИО, чтобы увидеть, кто лайкнул вашу заявку</p>
@@ -740,6 +749,7 @@
         if (currentTab === 'matches') renderMatches();
         if (currentTab === 'offers') renderOffers();
         if (currentTab === 'participants') renderParticipants();
+        if (currentTab === 'camps') renderCamps();
         if (currentTab === 'likes') setupLikesTab();
       });
     }
@@ -1687,6 +1697,78 @@
       } catch (e) { showToast('Ошибка: ' + e.message, 'error'); }
     }
 
+    // ========== CAMPS (leaders directory) ==========
+    function renderCamps() {
+      const container = document.getElementById('campsList');
+      const search = (document.getElementById('searchCamps')?.value || '').toLowerCase();
+
+      let list = (leaders || []).filter(l => {
+        if (!search) return true;
+        return (l.name || '').toLowerCase().includes(search)
+            || (l.camp || '').toLowerCase().includes(search)
+            || (l.contact || '').toLowerCase().includes(search);
+      });
+
+      // Sort by camp start date, then camp name
+      const monthOrder = { 'июня': 6, 'июля': 7, 'августа': 8, 'сентября': 9 };
+      const sortKey = campName => {
+        const camp = (camps || []).find(c => c.name === campName);
+        if (!camp?.dates) return [99, 99];
+        const dayMatch = camp.dates.match(/^(\d+)/);
+        const day = dayMatch ? parseInt(dayMatch[1]) : 99;
+        for (const m in monthOrder) if (camp.dates.includes(m)) return [monthOrder[m], day];
+        return [99, day];
+      };
+      list.sort((a, b) => {
+        const ka = sortKey(a.camp), kb = sortKey(b.camp);
+        return (ka[0] - kb[0]) || (ka[1] - kb[1]) || a.camp.localeCompare(b.camp, 'ru');
+      });
+
+      const total = (camps || []).length;
+      const stats = `<p style="color:var(--gray);font-size:14px;margin-bottom:16px">Зарегистрированы кэмп-лидеры: <strong>${(leaders || []).length}</strong> из ${total} лагерей</p>`;
+
+      if (list.length === 0) {
+        container.innerHTML = stats + '<div class="card" style="text-align:center;color:var(--gray)">' +
+          ((leaders || []).length === 0
+            ? 'Пока ни один кэмп-лидер не зарегистрировался. Если ты — кэмп-лидер, зайди через «Войти» → «Я кэмп-лидер».'
+            : 'Ничего не найдено') + '</div>';
+        return;
+      }
+
+      container.innerHTML = stats + list.map(l => {
+        const camp = (camps || []).find(c => c.name === l.camp);
+        const dates = camp?.dates || '';
+        const region = camp?.region || '';
+        return `
+          <div class="card">
+            <div class="card-title">${escapeHtml(l.camp)}</div>
+            <div class="card-meta">${escapeHtml(dates)}${region ? ' · ' + escapeHtml(region) : ''}</div>
+            <div style="margin-top:10px">
+              <span class="card-badge badge-yellow">Кэмп-лидер</span>
+              <strong style="margin-left:6px">${escapeHtml(l.name)}</strong>
+            </div>
+            ${l.contact ? `<div class="card-meta" style="margin-top:6px">${renderContact(l.contact)}</div>` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderContact(c) {
+      const s = String(c).trim();
+      const text = escapeHtml(s);
+      if (/^@[A-Za-z0-9_]{3,}$/.test(s)) {
+        const handle = s.substring(1);
+        return `<a href="https://t.me/${encodeURIComponent(handle)}" target="_blank" rel="noopener">${text}</a>`;
+      }
+      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) {
+        return `<a href="mailto:${encodeURIComponent(s)}">${text}</a>`;
+      }
+      if (/^[+\d][\d\s\-()]{6,}$/.test(s)) {
+        return `<a href="tel:${encodeURIComponent(s.replace(/\s/g, ''))}">${text}</a>`;
+      }
+      return text;
+    }
+
     // ========== LIKES TAB ==========
     function setupLikesTab() {
       setupAutocomplete('likesNameSearch', 'likesNameDropdown',
@@ -1788,6 +1870,7 @@
       if (tabName === 'offers') renderOffers();
       if (tabName === 'matches') renderMatches();
       if (tabName === 'participants') renderParticipants();
+      if (tabName === 'camps') renderCamps();
       if (tabName === 'likes') setupLikesTab();
     }
 
