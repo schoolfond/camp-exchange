@@ -130,6 +130,7 @@
     .badge-green { background: var(--pink-gradient); color: var(--white); }
     .badge-yellow { background: #FEF3C7; color: #92400E; }
     .badge-red { background: var(--red-light); color: #991B1B; }
+    .badge-confirmed { background: #D1FAE5; color: #065F46; }
     .card-meta {
       font-size: 14px;
       color: var(--gray);
@@ -719,6 +720,7 @@
     let matches = [];
     let likes = [];
     let myLikedRows = new Set();
+    let confirmedSet = new Set(); // names of participants who confirmed «Точно еду»
     let currentTab = 'offers';
     // currentUser: { role: 'volunteer' | 'leader', name, passwordHash, camp? }
     let currentUser = null;
@@ -798,22 +800,25 @@
       document.getElementById('loading').style.display = 'none';
       renderAll();
 
-      // Background: load offers, matches and leaders from API
+      // Background: load offers, matches, leaders, confirmed list from API
       try {
-        const [o, m, l] = await Promise.all([
+        const [o, m, l, c] = await Promise.all([
           fetchAPI('offers'),
           fetchAPI(matchesQuery()),
-          fetchAPI('leaders')
+          fetchAPI('leaders'),
+          fetchAPI('confirmed')
         ]);
         if (Array.isArray(o) && o.length > 0) offers = o;
         if (Array.isArray(m) && m.length > 0) matches = m;
         if (Array.isArray(l)) leaders = l;
+        if (Array.isArray(c)) confirmedSet = new Set(c.map(x => x.name));
       } catch (e) {
         console.error('API load error:', e);
       } finally {
         // Re-render with new data if viewer is on those tabs
         if (currentTab === 'offers' || currentTab === 'matches') renderOffers();
         if (currentTab === 'matches') renderMatches();
+        if (currentTab === 'participants') renderParticipants();
         updateStats();
       }
     }
@@ -903,7 +908,7 @@
         <div class="card">
           <div class="card-header">
             <div>
-              <div class="card-title">${escapeHtml(o.name)}</div>
+              <div class="card-title">${escapeHtml(o.name)}${confirmedSet.has(o.name) ? ' <span class="card-badge badge-confirmed" style="font-size:11px;vertical-align:middle">✓ Точно еду</span>' : ''}</div>
               <div class="card-meta">
                 ${escapeHtml(campLabel(o.fromCamp))}${o.toCamp ? ` → <strong>${escapeHtml(campLabel(o.toCamp))}</strong>` : ' → <em style="color:var(--gray)">не указан</em>'}
               </div>
@@ -1010,6 +1015,12 @@
       container.innerHTML = `<p style="margin-bottom:12px;color:var(--gray);font-size:14px">Найдено: ${filtered.length}</p>` +
         filtered.map(p => {
           const offer = offers.find(o => o.name === p.name);
+          const isConfirmed = confirmedSet.has(p.name);
+          const canToggleConfirmed = currentUser && (
+            (currentUser.role === 'volunteer' && currentUser.name === p.name) ||
+            (currentUser.role === 'leader' && currentUser.camp === p.camp)
+          );
+          const nameEsc = escapeHtml(p.name).replace(/'/g, "\\'");
           return `
         <div class="card">
           <div class="card-title" style="font-size:16px">${escapeHtml(p.name)}</div>
@@ -1020,6 +1031,8 @@
             ? `<span class="card-badge badge-yellow" style="margin-top:8px;display:inline-block;margin-left:6px">Хочет в: ${escapeHtml(campLabel(offer.toCamp))}</span>`
             : `<span class="card-badge" style="margin-top:8px;display:inline-block;margin-left:6px;background:var(--gray-light);color:var(--gray);font-weight:500">Не ищет обмен</span>`
           }
+          ${isConfirmed ? `<span class="card-badge badge-confirmed" style="margin-top:8px;display:inline-block;margin-left:6px">✓ Точно еду</span>` : ''}
+          ${canToggleConfirmed ? `<div style="margin-top:10px"><button class="btn btn-sm ${isConfirmed ? 'btn-secondary' : 'btn-primary'}" onclick="toggleConfirmed('${nameEsc}')">${isConfirmed ? 'Снять статус «точно еду»' : 'Отметить: точно еду / договор подписан'}</button></div>` : ''}
         </div>
       `}).join('');
     }
@@ -1052,6 +1065,67 @@
       const clearBtn = document.getElementById('campFilterClear');
       if (clearBtn) clearBtn.style.display = 'none';
       renderParticipants();
+    }
+
+    // ========== CONFIRMED STATUS ==========
+    async function toggleConfirmed(name) {
+      if (!currentUser) {
+        pendingAuthAction = () => toggleConfirmed(name);
+        openLoginModal();
+        return;
+      }
+      // Client-side permission check (backend re-checks)
+      if (currentUser.role === 'volunteer' && currentUser.name !== name) {
+        showToast('Можно менять статус только себе', 'error');
+        return;
+      }
+      if (currentUser.role === 'leader') {
+        const p = participants.find(x => x.name === name);
+        if (!p || p.camp !== currentUser.camp) {
+          showToast('Этот участник не из вашего лагеря', 'error');
+          return;
+        }
+      }
+
+      const wasConfirmed = confirmedSet.has(name);
+      // Optimistic
+      if (wasConfirmed) confirmedSet.delete(name);
+      else confirmedSet.add(name);
+      if (currentTab === 'participants') renderParticipants();
+      if (currentTab === 'offers') renderOffers();
+
+      if (isDemoMode) {
+        showToast('Демо-режим: статус обновлён локально', 'success');
+        return;
+      }
+
+      try {
+        const params = {
+          action: wasConfirmed ? 'unsetConfirmed' : 'setConfirmed',
+          name,
+          role: currentUser.role,
+          passwordHash: currentUser.passwordHash
+        };
+        if (currentUser.role === 'leader') params.camp = currentUser.camp;
+        const result = await postAPI(params);
+        if (!result.success) {
+          // Revert
+          if (wasConfirmed) confirmedSet.add(name);
+          else confirmedSet.delete(name);
+          if (currentTab === 'participants') renderParticipants();
+          if (currentTab === 'offers') renderOffers();
+          showToast('Ошибка: ' + (result.error || 'неизвестная'), 'error');
+          return;
+        }
+        showToast(wasConfirmed ? 'Статус снят' : '✓ Подтверждено: точно еду', 'success');
+      } catch (e) {
+        // Revert on network error
+        if (wasConfirmed) confirmedSet.add(name);
+        else confirmedSet.delete(name);
+        if (currentTab === 'participants') renderParticipants();
+        if (currentTab === 'offers') renderOffers();
+        showToast('Ошибка сети: ' + e.message, 'error');
+      }
     }
 
     // ========== CREATE OFFER ==========

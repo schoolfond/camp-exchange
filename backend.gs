@@ -28,6 +28,7 @@ function handleGet(e) {
         return jsonResponse({ inList: isParticipant_(name), registered: !!findUserRow_(name) });
       }
       case "leaders": return jsonResponse(getLeadersList_());
+      case "confirmed": return jsonResponse(getConfirmedList_());
       default: return jsonResponse({ error: "Unknown action" }, 400);
     }
   } catch (err) {
@@ -83,6 +84,46 @@ function handlePost(e) {
         return jsonResponse({ error: "Неверный пароль" }, 401);
       }
       return jsonResponse({ success: true, name: leader.name, camp: leader.camp });
+    }
+
+    if (action === "setConfirmed" || action === "unsetConfirmed") {
+      const targetName = params.name;
+      const role = params.role;
+      const passwordHash = params.passwordHash;
+      const camp = params.camp || "";
+      if (!targetName || !role || !passwordHash) {
+        return jsonResponse({ error: "Missing fields" }, 400);
+      }
+      if (role === "volunteer") {
+        if (!verifyAuth_(targetName, passwordHash)) {
+          return jsonResponse({ error: "Не авторизован" }, 401);
+        }
+      } else if (role === "leader") {
+        if (!camp) return jsonResponse({ error: "Missing camp" }, 400);
+        if (!verifyLeaderAuth_(camp, passwordHash)) {
+          return jsonResponse({ error: "Не авторизован" }, 401);
+        }
+        const targetCamp = getParticipantCamp_(targetName);
+        if (!targetCamp) return jsonResponse({ error: "Участника нет в списке" }, 404);
+        if (targetCamp !== camp) return jsonResponse({ error: "Участник не из вашего лагеря" }, 403);
+      } else {
+        return jsonResponse({ error: "Unknown role" }, 400);
+      }
+
+      if (action === "setConfirmed") {
+        if (findConfirmedRow_(targetName)) return jsonResponse({ success: true, message: "Уже подтверждено" });
+        const sheet = getConfirmedSheet_();
+        const timestamp = new Date().toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
+        const setBy = role === "leader" ? ("leader:" + camp) : ("volunteer:" + targetName);
+        sheet.appendRow([targetName, timestamp, setBy]);
+        return jsonResponse({ success: true });
+      } else {
+        const row = findConfirmedRow_(targetName);
+        if (!row) return jsonResponse({ success: true, message: "Уже снято" });
+        const sheet = getConfirmedSheet_();
+        sheet.deleteRow(row.row);
+        return jsonResponse({ success: true });
+      }
     }
 
     if (action === "createOffer") {
@@ -268,6 +309,53 @@ function isCamp_(camp) {
     if (String(data[i][0]) === camp) return true;
   }
   return false;
+}
+
+function verifyLeaderAuth_(camp, passwordHash) {
+  if (!camp || !passwordHash) return false;
+  const leader = findLeaderByCamp_(camp);
+  if (!leader) return false;
+  return leader.passwordHash === passwordHash;
+}
+
+function getParticipantCamp_(name) {
+  const sheet = getSheetByName_("participants");
+  if (!sheet) return null;
+  const data = sheet.getDataRange().getValues();
+  // schema: id | name | university | region | city | camp
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][1]) === name) return String(data[i][5] || "");
+  }
+  return null;
+}
+
+function getConfirmedSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName("confirmed");
+  if (!sheet) {
+    sheet = ss.insertSheet("confirmed");
+    sheet.appendRow(["name", "timestamp", "setBy"]);
+  }
+  return sheet;
+}
+
+function findConfirmedRow_(name) {
+  const sheet = getConfirmedSheet_();
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === name) return { row: i + 1 };
+  }
+  return null;
+}
+
+function getConfirmedList_() {
+  const sheet = getConfirmedSheet_();
+  const data = sheet.getDataRange().getValues();
+  if (data.length < 2) return [];
+  return data.slice(1).map(row => ({
+    name: String(row[0] || ""),
+    timestamp: String(row[1] || "")
+  }));
 }
 
 // --- Helpers ---
