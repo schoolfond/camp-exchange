@@ -22,6 +22,11 @@ function handleGet(e) {
         const name = e?.parameter?.name || "";
         return jsonResponse(getLikesFor(name));
       }
+      case "checkUser": {
+        const name = e?.parameter?.name || "";
+        if (!name) return jsonResponse({ error: "Missing name" }, 400);
+        return jsonResponse({ inList: isParticipant_(name), registered: !!findUserRow_(name) });
+      }
       default: return jsonResponse({ error: "Unknown action" }, 400);
     }
   } catch (err) {
@@ -34,8 +39,29 @@ function handlePost(e) {
     const params = e?.parameter || {};
     const action = params.action;
 
+    if (action === "register") {
+      const name = params.name;
+      const passwordHash = params.passwordHash;
+      if (!name || !passwordHash) return jsonResponse({ error: "Missing name or passwordHash" }, 400);
+      if (!isParticipant_(name)) return jsonResponse({ error: "Вас нет в списке участников" }, 403);
+      if (findUserRow_(name)) return jsonResponse({ error: "Пользователь уже зарегистрирован" }, 409);
+      const sheet = getUsersSheet_();
+      const timestamp = new Date().toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
+      sheet.appendRow([name, passwordHash, timestamp]);
+      return jsonResponse({ success: true });
+    }
+
+    if (action === "login") {
+      const name = params.name;
+      const passwordHash = params.passwordHash;
+      if (!name || !passwordHash) return jsonResponse({ error: "Missing name or passwordHash" }, 400);
+      if (!verifyAuth_(name, passwordHash)) return jsonResponse({ error: "Неверный пароль" }, 401);
+      return jsonResponse({ success: true });
+    }
+
     if (action === "createOffer") {
       const name = params.name;
+      const passwordHash = params.passwordHash;
       const fromCamp = params.fromCamp || "";
       const toCamp = params.toCamp || "";
       const contact = params.contact || "";
@@ -44,6 +70,7 @@ function handlePost(e) {
       if (!name || !fromCamp) {
         return jsonResponse({ error: "Missing required fields (name, fromCamp)" }, 400);
       }
+      if (!verifyAuth_(name, passwordHash)) return jsonResponse({ error: "Не авторизован" }, 401);
 
       const sheet = getSheetByName_("offers");
       if (!sheet) return jsonResponse({ error: "Sheet 'offers' not found" }, 500);
@@ -55,16 +82,27 @@ function handlePost(e) {
     }
 
     if (action === "deleteOffer") {
+      const name = params.name;
+      const passwordHash = params.passwordHash;
       const rowNum = parseInt(params.row);
       if (!rowNum || rowNum < 2) return jsonResponse({ error: "Invalid row number" }, 400);
+      if (!verifyAuth_(name, passwordHash)) return jsonResponse({ error: "Не авторизован" }, 401);
+
       const sheet = getSheetByName_("offers");
       if (!sheet) return jsonResponse({ error: "Sheet 'offers' not found" }, 500);
+      const data = sheet.getDataRange().getValues();
+      if (rowNum > data.length) return jsonResponse({ error: "Row out of range" }, 400);
+      // offers schema: timestamp | participantId | name | fromCamp | toCamp | contact | note | status
+      const offerOwner = String(data[rowNum - 1][2] || "");
+      if (offerOwner !== name) return jsonResponse({ error: "Нельзя удалить чужую заявку" }, 403);
+
       sheet.deleteRow(rowNum);
       return jsonResponse({ success: true, message: "Заявка удалена" });
     }
 
     if (action === "likeOffer") {
       const likerName = params.likerName;
+      const passwordHash = params.passwordHash;
       const offerRow = parseInt(params.offerRow);
       const offerName = params.offerName || "";
       const offerFrom = params.offerFrom || "";
@@ -73,6 +111,7 @@ function handlePost(e) {
       if (!likerName || !offerRow) {
         return jsonResponse({ error: "Missing likerName or offerRow" }, 400);
       }
+      if (!verifyAuth_(likerName, passwordHash)) return jsonResponse({ error: "Не авторизован" }, 401);
 
       let sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("likes");
       if (!sheet) {
@@ -94,7 +133,10 @@ function handlePost(e) {
 
     if (action === "unlikeOffer") {
       const likerName = params.likerName;
+      const passwordHash = params.passwordHash;
       const offerRow = parseInt(params.offerRow);
+
+      if (!verifyAuth_(likerName, passwordHash)) return jsonResponse({ error: "Не авторизован" }, 401);
 
       const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("likes");
       if (!sheet) return jsonResponse({ error: "No likes sheet" }, 400);
@@ -113,6 +155,44 @@ function handlePost(e) {
   } catch (err) {
     return jsonResponse({ error: err.toString() }, 500);
   }
+}
+
+// --- Auth helpers ---
+function getUsersSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName("users");
+  if (!sheet) {
+    sheet = ss.insertSheet("users");
+    sheet.appendRow(["name", "passwordHash", "createdAt"]);
+  }
+  return sheet;
+}
+
+function findUserRow_(name) {
+  const sheet = getUsersSheet_();
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === name) return { row: i + 1, passwordHash: String(data[i][1] || "") };
+  }
+  return null;
+}
+
+function isParticipant_(name) {
+  const sheet = getSheetByName_("participants");
+  if (!sheet) return false;
+  const data = sheet.getDataRange().getValues();
+  // participants schema: id | name | university | region | city | camp
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][1]) === name) return true;
+  }
+  return false;
+}
+
+function verifyAuth_(name, passwordHash) {
+  if (!name || !passwordHash) return false;
+  const user = findUserRow_(name);
+  if (!user) return false;
+  return user.passwordHash === passwordHash;
 }
 
 // --- Helpers ---

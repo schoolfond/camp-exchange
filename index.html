@@ -397,6 +397,34 @@
     }
     .footer img { height: 28px; margin-bottom: 12px; }
 
+    /* Auth status pill */
+    .auth-status {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--white);
+      padding: 6px 10px 6px 14px;
+      border-radius: 999px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+      border: 1px solid var(--gray-border);
+    }
+    .auth-status-name {
+      font-size: 13px;
+      font-weight: 600;
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .auth-status .btn { padding: 6px 14px; font-size: 13px; }
+    .auth-hint { font-size: 13px; margin-top: 6px; color: var(--gray); }
+    .auth-hint.error { color: var(--red); }
+    .auth-error { color: var(--red); font-size: 13px; margin-bottom: 12px; }
+
     /* Responsive */
     @media (max-width: 768px) {
       .hero h1 { font-size: 30px; }
@@ -404,10 +432,44 @@
       .tabs { gap: 4px; }
       .tab { padding: 8px 14px; font-size: 13px; }
       .match-arrow { flex-direction: column; gap: 8px; }
+      .auth-status { top: 8px; right: 8px; padding: 4px 8px 4px 12px; }
+      .auth-status-name { max-width: 120px; font-size: 12px; }
     }
   </style>
 </head>
 <body>
+
+  <!-- Auth status -->
+  <div class="auth-status" id="authStatus">
+    <button class="btn btn-sm btn-primary" onclick="openLoginModal()">Войти</button>
+  </div>
+
+  <!-- Auth modal -->
+  <div class="modal-overlay" id="authModal">
+    <div class="modal" style="max-width:480px">
+      <h2 id="authTitle" style="margin-bottom:8px">Вход</h2>
+      <p style="color:var(--gray);font-size:14px;margin-bottom:20px">
+        Авторизация нужна, чтобы создавать заявки и ставить лайки. Найди себя в списке участников.
+      </p>
+      <div class="form-group">
+        <label class="form-label">ФИО</label>
+        <div class="autocomplete-wrap">
+          <input type="text" class="form-input" id="authName" placeholder="Начните вводить ФИО..." autocomplete="off">
+          <div class="autocomplete-drop" id="authNameDropdown"></div>
+        </div>
+        <div id="authNameHint" class="auth-hint"></div>
+      </div>
+      <div class="form-group" id="authPasswordGroup" style="display:none">
+        <label class="form-label" id="authPasswordLabel">Пароль</label>
+        <input type="password" class="form-input" id="authPassword" autocomplete="current-password">
+      </div>
+      <div id="authError" class="auth-error" style="display:none"></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" id="authSubmit" onclick="submitAuth()" disabled>Продолжить</button>
+        <button class="btn btn-secondary" onclick="closeAuthModal()">Отмена</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Hero -->
   <section class="hero">
@@ -584,6 +646,8 @@
     let likes = [];
     let myLikedRows = new Set();
     let currentTab = 'offers';
+    let currentUser = null; // { name, passwordHash }
+    let pendingAuthAction = null;
 
     // ========== INIT ==========
     let isDemoMode = !API_URL.includes('script.google.com');
@@ -592,6 +656,8 @@
       if (isDemoMode) {
         showToast('Демо-режим — данные не сохраняются в Google Таблицу', 'success');
       }
+      loadCurrentUser();
+      updateAuthUI();
       initTabs();
       loadAllData();
     });
@@ -734,6 +800,9 @@
 
       container.innerHTML = filtered.map((o, i) => {
         const isLiked = myLikedRows ? myLikedRows.has(o._row) : false;
+        const isOwn = currentUser && currentUser.name === o.name;
+        const canDelete = o._row && isOwn;
+        const canLike = o._row && !isOwn;
         return `
         <div class="card">
           <div class="card-header">
@@ -743,14 +812,14 @@
                 ${escapeHtml(campLabel(o.fromCamp))}${o.toCamp ? ` → <strong>${escapeHtml(campLabel(o.toCamp))}</strong>` : ' → <em style="color:var(--gray)">не указан</em>'}
               </div>
             </div>
-            ${o._row ? `<button class="btn btn-sm btn-danger btn-icon" onclick="deleteOffer(${o._row}, '${escapeHtml(o.name).replace(/'/g, "\\'")}')" title="Удалить заявку"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M5.333 4V2.667a1.333 1.333 0 011.334-1.334h2.666a1.333 1.333 0 011.334 1.334V4m2 0v9.333a1.333 1.333 0 01-1.334 1.334H4.667a1.333 1.333 0 01-1.334-1.334V4h9.334z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}
+            ${canDelete ? `<button class="btn btn-sm btn-danger btn-icon" onclick="deleteOffer(${o._row}, '${escapeHtml(o.name).replace(/'/g, "\\'")}')" title="Удалить заявку"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M5.333 4V2.667a1.333 1.333 0 011.334-1.334h2.666a1.333 1.333 0 011.334 1.334V4m2 0v9.333a1.333 1.333 0 01-1.334 1.334H4.667a1.333 1.333 0 01-1.334-1.334V4h9.334z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}
           </div>
-          <div class="card-actions">
+          ${canLike ? `<div class="card-actions">
             <button class="btn btn-sm ${isLiked ? 'btn-danger' : 'btn-secondary'}" onclick="toggleLikeOffer(${o._row}, '${escapeHtml(o.name).replace(/'/g, "\\'")}', '${escapeHtml(o.fromCamp).replace(/'/g, "\\'")}', '${escapeHtml(o.toCamp).replace(/'/g, "\\'")}')" id="like-btn-${o._row}">
               <span id="like-icon-${o._row}">${isLiked ? '💔' : '❤️'}</span>
               <span id="like-text-${o._row}">${isLiked ? 'Убрать' : 'Нравится'}</span>
             </button>
-          </div>
+          </div>` : ''}
           ${o.contact ? `<div class="card-meta">Контакт: ${escapeHtml(o.contact)}</div>` : ''}
           ${o.note ? `<div class="card-meta">${escapeHtml(o.note)}</div>` : ''}
           <div class="card-meta" style="font-size:12px;color:#9CA3AF">${escapeHtml(o.timestamp || '')}</div>
@@ -995,13 +1064,239 @@
           c => c.dates + ', ' + c.region,
           null
         );
+
+        // Auth modal: ФИО autocomplete
+        setupAutocomplete('authName', 'authNameDropdown',
+          () => participants,
+          p => p.name,
+          p => p.university ? p.university + ', ' + p.camp : (p.camp || ''),
+          p => onAuthNameSelected(p.name)
+        );
+
+        // If user already logged in, re-apply UI (so formName gets pre-filled now that participants are loaded)
+        if (currentUser) {
+          updateAuthUI();
+          loadMyLikesForCurrentUser();
+        }
       }, 500);
     });
 
+    async function loadMyLikesForCurrentUser() {
+      if (!currentUser || isDemoMode) return;
+      try {
+        const l = await fetchAPI('likes');
+        const list = Array.isArray(l) ? l : [];
+        myLikedRows = new Set();
+        list.forEach(like => {
+          if (like.likerName === currentUser.name) myLikedRows.add(parseInt(like.offerRow));
+        });
+        if (currentTab === 'offers') renderOffers();
+      } catch (e) { /* ignore */ }
+    }
+
+    // ========== AUTH ==========
+    function loadCurrentUser() {
+      try {
+        const raw = localStorage.getItem('campExchangeUser');
+        currentUser = raw ? JSON.parse(raw) : null;
+      } catch (e) { currentUser = null; }
+    }
+
+    function saveCurrentUser(user) {
+      currentUser = user;
+      if (user) localStorage.setItem('campExchangeUser', JSON.stringify(user));
+      else localStorage.removeItem('campExchangeUser');
+      updateAuthUI();
+    }
+
+    function logout() {
+      saveCurrentUser(null);
+      showToast('Вы вышли', 'success');
+      myLikedRows = new Set();
+      renderOffers();
+    }
+
+    async function sha256(text) {
+      const buf = new TextEncoder().encode(text);
+      const hash = await crypto.subtle.digest('SHA-256', buf);
+      return Array.from(new Uint8Array(hash))
+        .map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    function updateAuthUI() {
+      const status = document.getElementById('authStatus');
+      if (currentUser) {
+        status.innerHTML = `
+          <span class="auth-status-name" title="${escapeHtml(currentUser.name)}">${escapeHtml(currentUser.name)}</span>
+          <button class="btn btn-sm btn-secondary" onclick="logout()">Выйти</button>
+        `;
+        const formName = document.getElementById('formName');
+        if (formName) {
+          formName.value = currentUser.name;
+          formName.readOnly = true;
+          const p = (participants || []).find(p => p.name === currentUser.name);
+          if (p) document.getElementById('formFromCamp').value = p.camp;
+        }
+      } else {
+        status.innerHTML = `<button class="btn btn-sm btn-primary" onclick="openLoginModal()">Войти</button>`;
+        const formName = document.getElementById('formName');
+        if (formName) {
+          formName.value = '';
+          formName.readOnly = false;
+          const fromCamp = document.getElementById('formFromCamp');
+          if (fromCamp) fromCamp.value = '';
+        }
+      }
+      // Refresh offer cards so buttons reflect ownership
+      if (offers && offers.length) renderOffers();
+    }
+
+    function requireAuth(action) {
+      if (currentUser) { action(); return; }
+      pendingAuthAction = action;
+      openLoginModal();
+    }
+
+    let authSelectedName = null;
+    let authState = 'idle'; // idle | login | register
+
+    function openLoginModal() {
+      authSelectedName = null;
+      authState = 'idle';
+      document.getElementById('authName').value = '';
+      document.getElementById('authPassword').value = '';
+      document.getElementById('authPasswordGroup').style.display = 'none';
+      document.getElementById('authError').style.display = 'none';
+      document.getElementById('authNameHint').textContent = '';
+      document.getElementById('authNameHint').classList.remove('error');
+      const submit = document.getElementById('authSubmit');
+      submit.disabled = true;
+      submit.textContent = 'Продолжить';
+      document.getElementById('authTitle').textContent = 'Вход';
+      document.getElementById('authModal').classList.add('open');
+      setTimeout(() => document.getElementById('authName').focus(), 50);
+    }
+
+    function closeAuthModal() {
+      document.getElementById('authModal').classList.remove('open');
+      pendingAuthAction = null;
+    }
+
+    async function onAuthNameSelected(name) {
+      authSelectedName = name;
+      const hint = document.getElementById('authNameHint');
+      const submit = document.getElementById('authSubmit');
+      hint.classList.remove('error');
+      hint.textContent = 'Проверяем...';
+      submit.disabled = true;
+
+      if (isDemoMode) {
+        authState = 'register';
+        showAuthPasswordStep(false);
+        return;
+      }
+      try {
+        const result = await fetchAPI('checkUser&name=' + encodeURIComponent(name));
+        if (result && result.error) {
+          hint.classList.add('error');
+          hint.textContent = result.error;
+          return;
+        }
+        if (!result.inList) {
+          hint.classList.add('error');
+          hint.textContent = 'Вас нет в списке участников';
+          return;
+        }
+        authState = result.registered ? 'login' : 'register';
+        showAuthPasswordStep(result.registered);
+      } catch (e) {
+        hint.classList.add('error');
+        hint.textContent = 'Ошибка сети: ' + e.message;
+      }
+    }
+
+    function showAuthPasswordStep(isLogin) {
+      const hint = document.getElementById('authNameHint');
+      hint.classList.remove('error');
+      hint.textContent = isLogin
+        ? 'Введите ваш пароль'
+        : 'Первый вход — задайте простой пароль';
+      document.getElementById('authPasswordGroup').style.display = 'block';
+      document.getElementById('authPasswordLabel').textContent = isLogin ? 'Пароль' : 'Придумайте пароль';
+      document.getElementById('authPassword').value = '';
+      const submit = document.getElementById('authSubmit');
+      submit.disabled = false;
+      submit.textContent = isLogin ? 'Войти' : 'Зарегистрироваться';
+      setTimeout(() => document.getElementById('authPassword').focus(), 50);
+    }
+
+    async function submitAuth() {
+      const password = document.getElementById('authPassword').value;
+      const err = document.getElementById('authError');
+      if (!authSelectedName) return;
+      if (!password || password.length < 4) {
+        err.textContent = 'Пароль минимум 4 символа';
+        err.style.display = 'block';
+        return;
+      }
+      err.style.display = 'none';
+      const submit = document.getElementById('authSubmit');
+      submit.disabled = true;
+
+      try {
+        if (isDemoMode) {
+          saveCurrentUser({ name: authSelectedName, passwordHash: 'demo' });
+          closeAuthModal();
+          showToast('Демо-режим: вход выполнен', 'success');
+          runPendingAuthAction();
+          return;
+        }
+        const passwordHash = await sha256(password);
+        const result = await postAPI({
+          action: authState === 'login' ? 'login' : 'register',
+          name: authSelectedName,
+          passwordHash: passwordHash
+        });
+        if (!result.success) {
+          err.textContent = result.error || 'Ошибка';
+          err.style.display = 'block';
+          submit.disabled = false;
+          return;
+        }
+        saveCurrentUser({ name: authSelectedName, passwordHash });
+        closeAuthModal();
+        showToast(authState === 'login' ? 'Добро пожаловать!' : 'Регистрация успешна!', 'success');
+        loadMyLikesForCurrentUser();
+        runPendingAuthAction();
+      } catch (e) {
+        err.textContent = 'Ошибка сети: ' + e.message;
+        err.style.display = 'block';
+        submit.disabled = false;
+      }
+    }
+
+    function runPendingAuthAction() {
+      if (pendingAuthAction) {
+        const a = pendingAuthAction;
+        pendingAuthAction = null;
+        a();
+      }
+    }
+
+    // Submit auth on Enter inside password field
+    document.addEventListener('DOMContentLoaded', () => {
+      const pw = document.getElementById('authPassword');
+      if (pw) pw.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submitAuth(); } });
+    });
+
+    // ========== CREATE OFFER ==========
     async function submitOffer(event) {
       event.preventDefault();
+      requireAuth(() => doSubmitOffer());
+    }
 
-      const name = document.getElementById('formName').value.trim();
+    async function doSubmitOffer() {
+      const name = currentUser.name;
       const fromCamp = document.getElementById('formFromCamp').value.trim();
       const toCamp = document.getElementById('formToCamp').value.trim();
       const contact = document.getElementById('formContact').value.trim();
@@ -1017,10 +1312,11 @@
         return;
       }
 
-      if (!API_URL.includes('script.google.com')) {
+      if (isDemoMode) {
         showToast('Демо-режим: заявка создана локально.', 'success');
         offers.push({ name, fromCamp, toCamp, contact, note, timestamp: new Date().toLocaleString('ru-RU') });
         document.getElementById('offerForm').reset();
+        updateAuthUI();
         renderOffers();
         updateStats();
         return;
@@ -1029,8 +1325,8 @@
       try {
         const result = await postAPI({
           action: 'createOffer',
-          participantId: name.replace(/\s+/g, '_').toLowerCase(),
           name: name,
+          passwordHash: currentUser.passwordHash,
           fromCamp: fromCamp,
           toCamp: toCamp,
           contact: contact,
@@ -1040,7 +1336,7 @@
         if (result.success) {
           showToast('Заявка создана!', 'success');
           document.getElementById('offerForm').reset();
-          document.getElementById('formFromCamp').value = '';
+          updateAuthUI(); // re-prefill name from currentUser
           const [o, m] = await Promise.all([fetchAPI('offers'), fetchAPI('matches')]);
           offers = Array.isArray(o) ? o : [];
           matches = Array.isArray(m) ? m : [];
@@ -1060,13 +1356,19 @@
     let deleteName = '';
 
     function deleteOffer(row, name) {
-      deleteRow = row;
-      deleteName = name;
-      document.getElementById('deleteConfirmName').value = '';
-      document.getElementById('deleteConfirmName').placeholder = 'Введите "' + name + '" для подтверждения';
-      document.getElementById('deleteError').textContent = '';
-      document.getElementById('deleteModal').classList.add('open');
-      setTimeout(() => document.getElementById('deleteConfirmName').focus(), 100);
+      requireAuth(() => {
+        if (currentUser.name !== name) {
+          showToast('Можно удалять только свои заявки', 'error');
+          return;
+        }
+        deleteRow = row;
+        deleteName = name;
+        document.getElementById('deleteConfirmName').value = '';
+        document.getElementById('deleteConfirmName').placeholder = 'Введите "' + name + '" для подтверждения';
+        document.getElementById('deleteError').textContent = '';
+        document.getElementById('deleteModal').classList.add('open');
+        setTimeout(() => document.getElementById('deleteConfirmName').focus(), 100);
+      });
     }
 
     function closeDeleteModal() {
@@ -1082,14 +1384,24 @@
         return;
       }
 
-      if (!API_URL.includes('script.google.com')) {
+      if (isDemoMode) {
         showToast('Демо-режим: удаление невозможно', 'error');
         closeDeleteModal();
         return;
       }
 
+      if (!currentUser) {
+        document.getElementById('deleteError').textContent = 'Нужна авторизация';
+        return;
+      }
+
       try {
-        const result = await postAPI({ action: 'deleteOffer', row: deleteRow });
+        const result = await postAPI({
+          action: 'deleteOffer',
+          row: deleteRow,
+          name: currentUser.name,
+          passwordHash: currentUser.passwordHash
+        });
         if (result.success) {
           showToast('Заявка удалена', 'success');
           closeDeleteModal();
@@ -1108,9 +1420,15 @@
     }
 
     // ========== LIKE / UNLIKE ==========
-    let myLikedName = '';
+    function toggleLikeOffer(row, name, fromCamp, toCamp) {
+      requireAuth(() => doToggleLike(row, name, fromCamp, toCamp));
+    }
 
-    async function toggleLikeOffer(row, name, fromCamp, toCamp) {
+    async function doToggleLike(row, name, fromCamp, toCamp) {
+      if (name === currentUser.name) {
+        showToast('Нельзя лайкнуть свою заявку', 'error');
+        return;
+      }
       let action;
       if (myLikedRows.has(row)) {
         action = 'unlikeOffer';
@@ -1135,10 +1453,18 @@
       }
       showToast(action === 'likeOffer' ? 'Лайк поставлен!' : 'Лайк убран', 'success');
 
-      if (!API_URL.includes('script.google.com')) return;
+      if (isDemoMode) return;
 
       try {
-        await postAPI({ action, likerName: myLikedName, offerRow: row, offerName: name, offerFrom: fromCamp, offerTo: toCamp });
+        await postAPI({
+          action,
+          likerName: currentUser.name,
+          passwordHash: currentUser.passwordHash,
+          offerRow: row,
+          offerName: name,
+          offerFrom: fromCamp,
+          offerTo: toCamp
+        });
       } catch (e) { showToast('Ошибка: ' + e.message, 'error'); }
     }
 
@@ -1155,8 +1481,6 @@
     async function loadMyLikes() {
       const name = document.getElementById('likesNameSearch').value.trim();
       if (!name) { showToast('Введите ФИО', 'error'); return; }
-
-      myLikedName = name;
 
       // Determine which offers this person has already liked
       const likesList = document.getElementById('likesList');
