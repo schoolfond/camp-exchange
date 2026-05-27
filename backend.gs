@@ -88,6 +88,48 @@ function handlePost(e) {
       return jsonResponse({ success: true, name: leader.name, camp: leader.camp, campDates: leader.campDates });
     }
 
+    if (action === "updateLeader") {
+      // Authenticate using the CURRENT (camp, campDates) + password.
+      const camp = params.camp;
+      const campDates = params.campDates || "";
+      const passwordHash = params.passwordHash;
+      if (!camp || !passwordHash) return jsonResponse({ error: "Missing fields" }, 400);
+      const current = findLeaderBySession_(camp, campDates);
+      if (!current || current.passwordHash !== passwordHash) {
+        return jsonResponse({ error: "Не авторизован" }, 401);
+      }
+
+      const newCamp = params.newCamp || camp;
+      const newCampDates = params.newCampDates || campDates;
+      const newContact = (params.newContact !== undefined) ? String(params.newContact) : current.contact;
+
+      // Validate new session and uniqueness only if changed
+      const sessionChanged = (newCamp !== camp) || (newCampDates !== campDates);
+      if (sessionChanged) {
+        if (!isCampSession_(newCamp, newCampDates)) {
+          return jsonResponse({ error: "Такой сессии лагеря нет в списке" }, 400);
+        }
+        const existing = findLeaderBySession_(newCamp, newCampDates);
+        if (existing) {
+          return jsonResponse({ error: "Эта сессия уже занята другим кэмп-лидером" }, 409);
+        }
+      }
+
+      const sheet = getLeadersSheet_();
+      // schema: camp | campDates | name | passwordHash | contact | createdAt
+      sheet.getRange(current.row, 1).setValue(newCamp);
+      sheet.getRange(current.row, 2).setValue(newCampDates);
+      sheet.getRange(current.row, 5).setValue(newContact);
+
+      return jsonResponse({
+        success: true,
+        camp: newCamp,
+        campDates: newCampDates,
+        contact: newContact,
+        name: current.name
+      });
+    }
+
     if (action === "setConfirmed" || action === "unsetConfirmed") {
       const targetName = params.name;
       const role = params.role;
