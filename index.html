@@ -604,9 +604,11 @@
         <span class="filter-chip" data-month="сентября" onclick="filterByMonth('сентября')">Сентябрь</span>
       </div>
       <div class="search-bar" style="margin-top:12px">
-        <select id="campFilterSelect" class="form-select" style="max-width:360px" onchange="renderParticipants()">
-          <option value="all">Выберите лагерь...</option>
-        </select>
+        <div class="autocomplete-wrap" style="flex:1;max-width:360px">
+          <input type="text" class="form-input" id="campFilterInput" placeholder="Выберите лагерь — начните вводить название..." autocomplete="off">
+          <div class="autocomplete-drop" id="campFilterDropdown"></div>
+        </div>
+        <button class="btn btn-sm btn-secondary" id="campFilterClear" onclick="clearCampFilter()" style="display:none">Сбросить</button>
       </div>
       <div id="participantsList"></div>
     </section>
@@ -863,11 +865,13 @@
     }
 
     // ========== PARTICIPANTS ==========
+    let participantsCampFilter = '';
+
     function renderParticipants() {
       const container = document.getElementById('participantsList');
       const search = (document.getElementById('searchParticipants')?.value || '').toLowerCase();
       const activeMonth = document.querySelector('#monthFilters .filter-chip.active')?.dataset?.month || 'all';
-      const activeCamp = document.getElementById('campFilterSelect')?.value || 'all';
+      const activeCamp = participantsCampFilter || 'all';
 
       let filtered = participants;
       if (search) {
@@ -889,52 +893,6 @@
       // Filter by specific camp
       if (activeCamp !== 'all') {
         filtered = filtered.filter(p => p.camp === activeCamp);
-      }
-
-      // Populate camp dropdown grouped by month
-      const select = document.getElementById('campFilterSelect');
-      const monthOrder = { 'июня': 1, 'июля': 2, 'августа': 3, 'сентября': 4 };
-      const monthNames = { 'июня': 'Июнь', 'июля': 'Июль', 'августа': 'Август', 'сентября': 'Сентябрь', 'без даты': 'Без даты' };
-
-      // Filter camps by selected month for dropdown
-      let campsForDropdown = camps;
-      if (activeMonth !== 'all') {
-        campsForDropdown = camps.filter(c => c.dates?.includes(activeMonth));
-      }
-
-      const grouped = {};
-      campsForDropdown.forEach(c => {
-        let hasMonth = false;
-        for (const month of Object.keys(monthOrder)) {
-          if (c.dates?.includes(month)) {
-            hasMonth = true;
-            if (!grouped[month]) grouped[month] = [];
-            grouped[month].push(c.name);
-          }
-        }
-        if (!hasMonth) {
-          if (!grouped['без даты']) grouped['без даты'] = [];
-          grouped['без даты'].push(c.name);
-        }
-      });
-
-      const sortedMonths = Object.keys(grouped).sort((a, b) => (monthOrder[a] || 99) - (monthOrder[b] || 99));
-
-      const prevValue = select.value;
-      select.innerHTML = '<option value="all">Выберите лагерь...</option>';
-      sortedMonths.forEach(month => {
-        const optgroup = document.createElement('optgroup');
-        optgroup.label = monthNames[month] || month;
-        grouped[month].sort().forEach(campName => {
-          const opt = document.createElement('option');
-          opt.value = campName;
-          opt.textContent = campName;
-          optgroup.appendChild(opt);
-        });
-        select.appendChild(optgroup);
-      });
-      if ([...select.options].some(o => o.value === prevValue)) {
-        select.value = prevValue;
       }
 
       if (filtered.length === 0) {
@@ -963,12 +921,29 @@
       document.querySelectorAll('#monthFilters .filter-chip').forEach(c => c.classList.remove('active'));
       const chip = document.querySelector(`#monthFilters .filter-chip[data-month="${month}"]`);
       if (chip) chip.classList.add('active');
-      document.getElementById('campFilterSelect').value = 'all';
-      renderParticipants();
+      clearCampFilter();
     }
 
     function filterByCamp(camp) {
-      document.getElementById('campFilterSelect').value = camp;
+      participantsCampFilter = camp;
+      const input = document.getElementById('campFilterInput');
+      if (input) input.value = camp;
+      const clearBtn = document.getElementById('campFilterClear');
+      if (clearBtn) clearBtn.style.display = '';
+      renderParticipants();
+    }
+
+    function clearCampFilter() {
+      participantsCampFilter = '';
+      const input = document.getElementById('campFilterInput');
+      if (input) {
+        input.value = '';
+        input._lastFiltered = null;
+      }
+      const dropdown = document.getElementById('campFilterDropdown');
+      if (dropdown) dropdown.classList.remove('open');
+      const clearBtn = document.getElementById('campFilterClear');
+      if (clearBtn) clearBtn.style.display = 'none';
       renderParticipants();
     }
 
@@ -1072,6 +1047,29 @@
           p => p.university ? p.university + ', ' + p.camp : (p.camp || ''),
           p => onAuthNameSelected(p.name)
         );
+
+        // Participants tab: camp filter autocomplete (respects active month chip)
+        setupAutocomplete('campFilterInput', 'campFilterDropdown',
+          () => {
+            const activeMonth = document.querySelector('#monthFilters .filter-chip.active')?.dataset?.month || 'all';
+            return activeMonth === 'all' ? camps : camps.filter(c => c.dates?.includes(activeMonth));
+          },
+          c => c.name,
+          c => c.dates ? c.dates + (c.region ? ', ' + c.region : '') : (c.region || ''),
+          c => {
+            participantsCampFilter = c.name;
+            document.getElementById('campFilterClear').style.display = '';
+            renderParticipants();
+          }
+        );
+        // Erasing input clears the filter
+        document.getElementById('campFilterInput').addEventListener('input', e => {
+          if (!e.target.value) {
+            participantsCampFilter = '';
+            document.getElementById('campFilterClear').style.display = 'none';
+            renderParticipants();
+          }
+        });
 
         // If user already logged in, re-apply UI (so formName gets pre-filled now that participants are loaded)
         if (currentUser) {
