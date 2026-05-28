@@ -535,50 +535,115 @@ const TG_AUTO_MAPPINGS = [
 ];
 
 function runMigration() {
-  // Phase 1: link each silent user + bootstrap an empty offer.
-  let linked = 0, skipped = 0, offersCreated = 0;
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // -------- Phase 1: link silent users (idempotent: skips already-linked) --------
+  let linked = 0, skippedAlreadyLinked = 0, failed = 0;
   for (const pair of TG_AUTO_MAPPINGS) {
     const chatId = pair[0], name = pair[1];
-    if (findTgUserByChatId_(chatId)) { skipped++; continue; }
+    if (findTgUserByChatId_(chatId)) { skippedAlreadyLinked++; continue; }
     const r = linkTelegram_(chatId, name);
-    if (!r.ok) {
-      console.warn("link failed", chatId, name, r.error);
-      continue;
-    }
+    if (!r.ok) { failed++; console.warn("link failed", chatId, name, r.error); continue; }
     linked++;
-    if (!getOffers().find(o => o.name === name)) {
-      const sr = createOfferImpl_(name, "", "", "", "");
-      if (sr.ok) offersCreated++;
-    }
     removeLegacyTgUser_(chatId);
   }
+  console.log("Phase 1 done: linked=" + linked + ", skipped=" + skippedAlreadyLinked + ", failed=" + failed);
 
-  // Phase 2: walk legacy_tg_likes once; migrate pairs where both sides are linked.
-  let likesMigrated = 0, likesPending = 0;
-  const sheet = getLegacyTgLikesSheet_();
-  if (sheet) {
-    const data = sheet.getDataRange().getValues();
-    const offersByName = {};
-    for (const o of getOffers()) offersByName[o.name] = o;
-    for (let i = data.length - 1; i >= 1; i--) {
-      const fromId = String(data[i][0]);
-      const toId = String(data[i][1]);
-      const fromUser = findTgUserByChatId_(fromId);
-      const toUser = findTgUserByChatId_(toId);
-      if (!fromUser || !toUser) { likesPending++; continue; }
-      const toOffer = offersByName[toUser.name];
-      if (!toOffer) { likesPending++; continue; }
-      const r = likeOfferImpl_(fromUser.name, toOffer._row, toUser.name, toOffer.fromCamp, toOffer.toCamp);
-      if (r.ok && !r.duplicate) likesMigrated++;
-      sheet.deleteRow(i + 1);
+  // -------- Phase 1b: bootstrap empty offers in ONE batched setValues --------
+  const offersSheet = ss.getSheetByName("offers");
+  if (!offersSheet) throw new Error("offers sheet missing");
+  const offerNames = new Set(getOffers().map(o => o.name));
+  const newOfferRows = [];
+  const ts = new Date().toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
+  for (const pair of TG_AUTO_MAPPINGS) {
+    const name = pair[1];
+    if (offerNames.has(name)) continue;
+    const session = getParticipantSession_(name);
+    if (!session) continue;
+    const pId = name.replace(/\s+/g, "_").toLowerCase();
+    // offers schema: timestamp | participantId | name | fromCamp | toCamp | contact | note | status | fromCampDates | toCampDates
+    newOfferRows.push([ts, pId, name, session.camp, "", "", "", "active", session.campDates, ""]);
+  }
+  if (newOfferRows.length > 0) {
+    offersSheet.getRange(offersSheet.getLastRow() + 1, 1, newOfferRows.length, 10).setValues(newOfferRows);
+  }
+  const offersCreated = newOfferRows.length;
+  console.log("Phase 1b done: offers bootstrapped=" + offersCreated);
+
+  // -------- Phase 2: migrate legacy_tg_likes — all in-memory, batched I/O --------
+  let likesMigrated = 0, likesPending = 0, likesDupSkipped = 0;
+  const legacySheet = getLegacyTgLikesSheet_();
+  if (legacySheet) {
+    // Build chatId → name map ONCE (vs 1280 reads in old code)
+    const tgRows = getTgUsersSheet_().getDataRange().getValues();
+    const nameByChatId = new Map();
+    for (let i = 1; i < tgRows.length; i++) {
+      nameByChatId.set(String(tgRows[i][0]), String(tgRows[i][1]));
+    }
+    // Build name → offerRow map (refreshed after Phase 1b)
+    const offersByName = new Map();
+    for (const o of getOffers()) offersByName.set(o.name, o);
+
+    // Get likes sheet + existing dedupe set
+    let likesSheet = ss.getSheetByName("likes");
+    if (!likesSheet) {
+      likesSheet = ss.insertSheet("likes");
+      likesSheet.appendRow(["timestamp", "likerName", "offerRow", "offerName", "offerFrom", "offerTo"]);
+    }
+    const likesData = likesSheet.getDataRange().getValues();
+    const existingLikes = new Set();
+    for (let i = 1; i < likesData.length; i++) {
+      existingLikes.add(String(likesData[i][1]) + ":" + parseInt(likesData[i][2]));
+    }
+
+    // Walk legacy ONCE, partition into newLikes vs remaining
+    const legacyData = legacySheet.getDataRange().getValues();
+    const remainingLegacy = [["from_user", "to_user"]]; // keep header
+    const newLikes = [];
+    for (let i = 1; i < legacyData.length; i++) {
+      const fromId = String(legacyData[i][0]);
+      const toId = String(legacyData[i][1]);
+      const fromName = nameByChatId.get(fromId);
+      const toName = nameByChatId.get(toId);
+      if (!fromName || !toName) {
+        remainingLegacy.push([fromId, toId]);
+        likesPending++;
+        continue;
+      }
+      const toOffer = offersByName.get(toName);
+      if (!toOffer) {
+        remainingLegacy.push([fromId, toId]);
+        likesPending++;
+        continue;
+      }
+      const key = fromName + ":" + toOffer._row;
+      if (existingLikes.has(key)) {
+        likesDupSkipped++;
+        continue; // drop from legacy without re-adding
+      }
+      existingLikes.add(key);
+      newLikes.push([ts, fromName, toOffer._row, toName, toOffer.fromCamp || "", toOffer.toCamp || ""]);
+      likesMigrated++;
+    }
+
+    // Batch append all new likes (one setValues call instead of 640 appendRow)
+    if (newLikes.length > 0) {
+      likesSheet.getRange(likesSheet.getLastRow() + 1, 1, newLikes.length, 6).setValues(newLikes);
+    }
+
+    // Rewrite legacy_tg_likes with only the still-pending rows
+    legacySheet.clearContents();
+    if (remainingLegacy.length > 0) {
+      legacySheet.getRange(1, 1, remainingLegacy.length, 2).setValues(remainingLegacy);
     }
   }
 
   const summary =
     "Migration done.\n" +
-    "  Linked: " + linked + " (skipped " + skipped + " already-linked)\n" +
+    "  Linked: " + linked + " (skipped " + skippedAlreadyLinked + " already-linked, " + failed + " failed)\n" +
     "  Offers bootstrapped: " + offersCreated + "\n" +
     "  Likes migrated: " + likesMigrated + "\n" +
+    "  Likes skipped as duplicates of existing: " + likesDupSkipped + "\n" +
     "  Likes still pending (wait for /start): " + likesPending;
   console.log(summary);
   return summary;
