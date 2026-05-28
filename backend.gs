@@ -4,7 +4,26 @@
 // ==========================================
 
 function doGet(e) { return handleGet(e); }
-function doPost(e) { return handlePost(e); }
+
+function doPost(e) {
+  // Telegram webhook updates arrive as JSON; the site uses form-encoded params.
+  // We also require a shared secret in the query string (Apps Script can't
+  // read request headers, so secret-via-URL is the only practical option).
+  if (e && e.postData && e.postData.type &&
+      e.postData.type.indexOf("application/json") === 0 &&
+      e.parameter && e.parameter.secret === getTgWebhookSecret_()) {
+    return handleTelegramUpdate(e);
+  }
+  return handlePost(e);
+}
+
+function getTgWebhookSecret_() {
+  return PropertiesService.getScriptProperties().getProperty("TG_WEBHOOK_SECRET") || "";
+}
+
+function getTgToken_() {
+  return PropertiesService.getScriptProperties().getProperty("TG_TOKEN") || "";
+}
 
 function handleGet(e) {
   try {
@@ -158,116 +177,51 @@ function handlePost(e) {
       }
 
       if (action === "setConfirmed") {
-        if (findConfirmedRow_(targetName)) return jsonResponse({ success: true, message: "Уже подтверждено" });
-        const sheet = getConfirmedSheet_();
-        const timestamp = new Date().toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
         const setBy = role === "leader" ? ("leader:" + camp) : ("volunteer:" + targetName);
-        sheet.appendRow([targetName, timestamp, setBy]);
-        return jsonResponse({ success: true });
+        const r = setConfirmedImpl_(targetName, setBy);
+        if (!r.ok) return jsonResponse({ error: r.error }, r.code || 400);
+        return jsonResponse({ success: true, message: r.message });
       } else {
-        const row = findConfirmedRow_(targetName);
-        if (!row) return jsonResponse({ success: true, message: "Уже снято" });
-        const sheet = getConfirmedSheet_();
-        sheet.deleteRow(row.row);
-        return jsonResponse({ success: true });
+        const r = unsetConfirmedImpl_(targetName);
+        if (!r.ok) return jsonResponse({ error: r.error }, r.code || 400);
+        return jsonResponse({ success: true, message: r.message });
       }
     }
 
     if (action === "createOffer") {
       const name = params.name;
-      const passwordHash = params.passwordHash;
-      const toCamp = params.toCamp || "";
-      const toCampDates = params.toCampDates || "";
-      const contact = params.contact || "";
-      const note = params.note || "";
-
       if (!name) return jsonResponse({ error: "Missing name" }, 400);
-      if (!verifyAuth_(name, passwordHash)) return jsonResponse({ error: "Не авторизован" }, 401);
-
-      // Author's camp + dates are the authoritative truth — taken from the participants sheet.
-      const session = getParticipantSession_(name);
-      if (!session) return jsonResponse({ error: "Участника нет в списке" }, 403);
-      const fromCamp = session.camp;
-      const fromCampDates = session.campDates;
-
-      const sheet = getSheetByName_("offers");
-      if (!sheet) return jsonResponse({ error: "Sheet 'offers' not found" }, 500);
-
-      const timestamp = new Date().toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
-      const pId = name.replace(/\s+/g, "_").toLowerCase();
-      // offers schema: timestamp | participantId | name | fromCamp | toCamp | contact | note | status | fromCampDates | toCampDates
-      sheet.appendRow([timestamp, pId, name, fromCamp, toCamp, contact, note, "active", fromCampDates, toCampDates]);
-      return jsonResponse({ success: true, message: "Заявка создана!" });
+      if (!verifyAuth_(name, params.passwordHash)) return jsonResponse({ error: "Не авторизован" }, 401);
+      const r = createOfferImpl_(name, params.toCamp || "", params.toCampDates || "", params.contact || "", params.note || "");
+      if (!r.ok) return jsonResponse({ error: r.error }, r.code || 400);
+      return jsonResponse({ success: true, message: r.message });
     }
 
     if (action === "deleteOffer") {
       const name = params.name;
-      const passwordHash = params.passwordHash;
       const rowNum = parseInt(params.row);
-      if (!rowNum || rowNum < 2) return jsonResponse({ error: "Invalid row number" }, 400);
-      if (!verifyAuth_(name, passwordHash)) return jsonResponse({ error: "Не авторизован" }, 401);
-
-      const sheet = getSheetByName_("offers");
-      if (!sheet) return jsonResponse({ error: "Sheet 'offers' not found" }, 500);
-      const data = sheet.getDataRange().getValues();
-      if (rowNum > data.length) return jsonResponse({ error: "Row out of range" }, 400);
-      // offers schema: timestamp | participantId | name | fromCamp | toCamp | contact | note | status
-      const offerOwner = String(data[rowNum - 1][2] || "");
-      if (offerOwner !== name) return jsonResponse({ error: "Нельзя удалить чужую заявку" }, 403);
-
-      sheet.deleteRow(rowNum);
-      return jsonResponse({ success: true, message: "Заявка удалена" });
+      if (!verifyAuth_(name, params.passwordHash)) return jsonResponse({ error: "Не авторизован" }, 401);
+      const r = deleteOfferImpl_(name, rowNum);
+      if (!r.ok) return jsonResponse({ error: r.error }, r.code || 400);
+      return jsonResponse({ success: true, message: r.message });
     }
 
     if (action === "likeOffer") {
       const likerName = params.likerName;
-      const passwordHash = params.passwordHash;
       const offerRow = parseInt(params.offerRow);
-      const offerName = params.offerName || "";
-      const offerFrom = params.offerFrom || "";
-      const offerTo = params.offerTo || "";
-
-      if (!likerName || !offerRow) {
-        return jsonResponse({ error: "Missing likerName or offerRow" }, 400);
-      }
-      if (!verifyAuth_(likerName, passwordHash)) return jsonResponse({ error: "Не авторизован" }, 401);
-
-      let sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("likes");
-      if (!sheet) {
-        sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet("likes");
-        sheet.appendRow(["timestamp", "likerName", "offerRow", "offerName", "offerFrom", "offerTo"]);
-      }
-
-      const data = sheet.getDataRange().getValues();
-      for (let i = 1; i < data.length; i++) {
-        if (String(data[i][1]) === likerName && parseInt(data[i][2]) === offerRow) {
-          return jsonResponse({ success: true, message: "Уже лайкнуто" });
-        }
-      }
-
-      const timestamp = new Date().toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
-      sheet.appendRow([timestamp, likerName, offerRow, offerName, offerFrom, offerTo]);
-      return jsonResponse({ success: true, message: "Лайк!" });
+      if (!verifyAuth_(likerName, params.passwordHash)) return jsonResponse({ error: "Не авторизован" }, 401);
+      const r = likeOfferImpl_(likerName, offerRow, params.offerName || "", params.offerFrom || "", params.offerTo || "");
+      if (!r.ok) return jsonResponse({ error: r.error }, r.code || 400);
+      return jsonResponse({ success: true, message: r.message });
     }
 
     if (action === "unlikeOffer") {
       const likerName = params.likerName;
-      const passwordHash = params.passwordHash;
       const offerRow = parseInt(params.offerRow);
-
-      if (!verifyAuth_(likerName, passwordHash)) return jsonResponse({ error: "Не авторизован" }, 401);
-
-      const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("likes");
-      if (!sheet) return jsonResponse({ error: "No likes sheet" }, 400);
-
-      const data = sheet.getDataRange().getValues();
-      for (let i = data.length - 1; i >= 1; i--) {
-        if (String(data[i][1]) === likerName && parseInt(data[i][2]) === offerRow) {
-          sheet.deleteRow(i + 1);
-          return jsonResponse({ success: true, message: "Лайк удалён" });
-        }
-      }
-      return jsonResponse({ success: true, message: "Лайк не найден" });
+      if (!verifyAuth_(likerName, params.passwordHash)) return jsonResponse({ error: "Не авторизован" }, 401);
+      const r = unlikeOfferImpl_(likerName, offerRow);
+      if (!r.ok) return jsonResponse({ error: r.error }, r.code || 400);
+      return jsonResponse({ success: true, message: r.message });
     }
 
     return jsonResponse({ error: "Unknown action" }, 400);
@@ -466,14 +420,16 @@ function getLikesFor(name) {
 function findMatches(filterName) {
   // Exclude offers from participants who confirmed «Точно еду / договор подписан»
   const confirmedNames = new Set(getConfirmedList_().map(c => c.name));
-  const offers = getOffers().filter(o => o.toCamp && !confirmedNames.has(o.name));
+  const offers = getOffers().filter(o => !confirmedNames.has(o.name));
+  // Direct-exchange uses only offers with an explicit toCamp.
+  const offersWithTarget = offers.filter(o => o.toCamp);
   const likesAll = getSheet("likes");
   const matches = [];
 
   // 1. Classic matches: A wants X→Y (specific sessions), B wants Y→X (specific sessions)
-  for (let i = 0; i < offers.length; i++) {
-    for (let j = i + 1; j < offers.length; j++) {
-      const a = offers[i], b = offers[j];
+  for (let i = 0; i < offersWithTarget.length; i++) {
+    for (let j = i + 1; j < offersWithTarget.length; j++) {
+      const a = offersWithTarget[i], b = offersWithTarget[j];
       if (a.fromCamp === b.toCamp && (a.fromCampDates || "") === (b.toCampDates || "")
        && a.toCamp === b.fromCamp && (a.toCampDates || "") === (b.fromCampDates || "")) {
         matches.push({
@@ -530,4 +486,226 @@ function jsonResponse(data, code) {
   return ContentService
     .createTextOutput(JSON.stringify(data))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+// ==========================================
+// Pure business-logic helpers (no auth, no HTTP).
+// Called by both the web (handlePost — after password auth)
+// and the Telegram bot (tgBot.gs — after telegram-link auth).
+// Return shape: { ok: true, ...payload } | { ok: false, error, code }
+// ==========================================
+
+function createOfferImpl_(name, toCamp, toCampDates, contact, note) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const session = getParticipantSession_(name);
+    if (!session) return { ok: false, error: "Участника нет в списке", code: 403 };
+    const sheet = getSheetByName_("offers");
+    if (!sheet) return { ok: false, error: "Sheet 'offers' not found", code: 500 };
+    const timestamp = new Date().toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
+    const pId = name.replace(/\s+/g, "_").toLowerCase();
+    // offers schema: timestamp | participantId | name | fromCamp | toCamp | contact | note | status | fromCampDates | toCampDates
+    sheet.appendRow([timestamp, pId, name, session.camp, toCamp || "", contact || "", note || "", "active", session.campDates, toCampDates || ""]);
+    return { ok: true, message: "Заявка создана!", row: sheet.getLastRow() };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function deleteOfferImpl_(name, rowNum) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    if (!rowNum || rowNum < 2) return { ok: false, error: "Invalid row number", code: 400 };
+    const sheet = getSheetByName_("offers");
+    if (!sheet) return { ok: false, error: "Sheet 'offers' not found", code: 500 };
+    const data = sheet.getDataRange().getValues();
+    if (rowNum > data.length) return { ok: false, error: "Row out of range", code: 400 };
+    const offerOwner = String(data[rowNum - 1][2] || "");
+    if (offerOwner !== name) return { ok: false, error: "Нельзя удалить чужую заявку", code: 403 };
+    sheet.deleteRow(rowNum);
+    return { ok: true, message: "Заявка удалена" };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function likeOfferImpl_(likerName, offerRow, offerName, offerFrom, offerTo) {
+  if (!likerName || !offerRow) return { ok: false, error: "Missing likerName or offerRow", code: 400 };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    let sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("likes");
+    if (!sheet) {
+      sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet("likes");
+      sheet.appendRow(["timestamp", "likerName", "offerRow", "offerName", "offerFrom", "offerTo"]);
+    }
+    const data = sheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][1]) === likerName && parseInt(data[i][2]) === offerRow) {
+        return { ok: true, message: "Уже лайкнуто", duplicate: true };
+      }
+    }
+    const timestamp = new Date().toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
+    sheet.appendRow([timestamp, likerName, offerRow, offerName || "", offerFrom || "", offerTo || ""]);
+    return { ok: true, message: "Лайк!" };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function unlikeOfferImpl_(likerName, offerRow) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("likes");
+    if (!sheet) return { ok: false, error: "No likes sheet", code: 400 };
+    const data = sheet.getDataRange().getValues();
+    for (let i = data.length - 1; i >= 1; i--) {
+      if (String(data[i][1]) === likerName && parseInt(data[i][2]) === offerRow) {
+        sheet.deleteRow(i + 1);
+        return { ok: true, message: "Лайк удалён" };
+      }
+    }
+    return { ok: true, message: "Лайк не найден" };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function setConfirmedImpl_(targetName, setBy) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    if (findConfirmedRow_(targetName)) return { ok: true, message: "Уже подтверждено" };
+    const sheet = getConfirmedSheet_();
+    const timestamp = new Date().toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
+    sheet.appendRow([targetName, timestamp, setBy]);
+    return { ok: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function unsetConfirmedImpl_(targetName) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const row = findConfirmedRow_(targetName);
+    if (!row) return { ok: true, message: "Уже снято" };
+    getConfirmedSheet_().deleteRow(row.row);
+    return { ok: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ==========================================
+// Telegram-link helpers
+// ==========================================
+
+function getTgUsersSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName("tg_users");
+  if (!sheet) {
+    sheet = ss.insertSheet("tg_users");
+    sheet.appendRow(["telegram_id", "name", "linkedAt"]);
+  }
+  return sheet;
+}
+
+function findTgUserByChatId_(chatId) {
+  const sheet = getTgUsersSheet_();
+  const data = sheet.getDataRange().getValues();
+  const idStr = String(chatId);
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === idStr) return { row: i + 1, name: String(data[i][1] || "") };
+  }
+  return null;
+}
+
+function findTgUserByName_(name) {
+  const sheet = getTgUsersSheet_();
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][1]) === name) return { row: i + 1, telegramId: String(data[i][0]) };
+  }
+  return null;
+}
+
+function verifyTelegramActor_(chatId) {
+  // Source-of-truth for "which participant is this Telegram chat?".
+  // Returns the linked ФИО, or null if not linked.
+  const user = findTgUserByChatId_(chatId);
+  return user ? user.name : null;
+}
+
+function linkTelegram_(chatId, name) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    if (!isParticipant_(name)) return { ok: false, error: "Участника нет в списке Школы 2026", code: 403 };
+    if (findTgUserByChatId_(chatId)) return { ok: false, error: "Этот Telegram уже привязан", code: 409 };
+    if (findTgUserByName_(name)) return { ok: false, error: "Этот участник уже привязан к другому Telegram", code: 409 };
+    const sheet = getTgUsersSheet_();
+    const timestamp = new Date().toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
+    sheet.appendRow([String(chatId), name, timestamp]);
+    return { ok: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function unlinkTelegram_(chatId) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const user = findTgUserByChatId_(chatId);
+    if (!user) return { ok: true, message: "Не был привязан" };
+    getTgUsersSheet_().deleteRow(user.row);
+    return { ok: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function getLegacyTgUsersSheet_() {
+  return SpreadsheetApp.getActiveSpreadsheet().getSheetByName("legacy_tg_users");
+}
+
+function getLegacyTgLikesSheet_() {
+  return SpreadsheetApp.getActiveSpreadsheet().getSheetByName("legacy_tg_likes");
+}
+
+function findLegacyTgUser_(chatId) {
+  const sheet = getLegacyTgUsersSheet_();
+  if (!sheet) return null;
+  const data = sheet.getDataRange().getValues();
+  const idStr = String(chatId);
+  // legacy_tg_users schema: telegram_id | username | project | month
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === idStr) {
+      return {
+        row: i + 1,
+        username: String(data[i][1] || ""),
+        project: String(data[i][2] || ""),
+        month: String(data[i][3] || "")
+      };
+    }
+  }
+  return null;
+}
+
+function removeLegacyTgUser_(chatId) {
+  const sheet = getLegacyTgUsersSheet_();
+  if (!sheet) return;
+  const data = sheet.getDataRange().getValues();
+  const idStr = String(chatId);
+  for (let i = data.length - 1; i >= 1; i--) {
+    if (String(data[i][0]) === idStr) {
+      sheet.deleteRow(i + 1);
+      return;
+    }
+  }
 }
