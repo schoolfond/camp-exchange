@@ -77,6 +77,16 @@ function clearState_(chatId) {
 function handleTelegramUpdate(e) {
   try {
     const update = JSON.parse(e.postData.contents);
+    // Dedup against retries / pending-queue floods. Same update_id may arrive
+    // multiple times if Telegram thinks a delivery was too slow.
+    if (update.update_id != null) {
+      const cache = CacheService.getScriptCache();
+      const key = "tg_upd:" + update.update_id;
+      if (cache.get(key)) {
+        return ContentService.createTextOutput("").setMimeType(ContentService.MimeType.TEXT);
+      }
+      cache.put(key, "1", 600); // 10 minutes is plenty for Telegram retry window
+    }
     if (update.message) handleMessage_(update.message);
     else if (update.callback_query) handleCallback_(update.callback_query);
   } catch (err) {
