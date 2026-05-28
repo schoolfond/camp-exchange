@@ -825,18 +825,25 @@
       document.getElementById('loading').style.display = 'none';
       renderAll();
 
-      // Background: load offers, matches, leaders, confirmed list from API
+      // Background: load offers, matches, leaders, confirmed AND participants/camps
+      // from API. participants/camps come from the bundle initially for instant render;
+      // we overwrite with live Sheet data when it arrives, so edits in the Google Sheet
+      // show up without re-bundling the JS files.
       try {
-        const [o, m, l, c] = await Promise.all([
+        const [o, m, l, c, p, cmp] = await Promise.all([
           fetchAPI('offers'),
           fetchAPI(matchesQuery()),
           fetchAPI('leaders'),
-          fetchAPI('confirmed')
+          fetchAPI('confirmed'),
+          fetchAPI('participants'),
+          fetchAPI('camps')
         ]);
         if (Array.isArray(o) && o.length > 0) offers = o;
         if (Array.isArray(m) && m.length > 0) matches = m;
         if (Array.isArray(l)) leaders = l;
         if (Array.isArray(c)) confirmedSet = new Set(c.map(x => x.name));
+        if (Array.isArray(p) && p.length > 0) participants = p;
+        if (Array.isArray(cmp) && cmp.length > 0) camps = cmp;
       } catch (e) {
         console.error('API load error:', e);
       } finally {
@@ -844,6 +851,7 @@
         if (currentTab === 'offers' || currentTab === 'matches') renderOffers();
         if (currentTab === 'matches') renderMatches();
         if (currentTab === 'participants') renderParticipants();
+        if (currentTab === 'camps') renderCamps();
         updateStats();
       }
     }
